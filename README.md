@@ -53,3 +53,5 @@ npm.cmd install
 docker-compose up -d postgres
 
 npm.cmd run db:generate
+
+npm.cmd run db:seed
