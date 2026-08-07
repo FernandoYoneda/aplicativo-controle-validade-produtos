@@ -26,7 +26,7 @@ async function main() {
   for (const store of stores) {
     await prisma.store.upsert({
       where: { code: store.code },
-      update: { name: store.name },
+      update: {},
       create: store,
     });
   }
