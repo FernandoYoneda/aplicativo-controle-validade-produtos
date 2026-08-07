@@ -34,7 +34,7 @@ Monorepo da plataforma de controle de validade de produtos.
 
 \- API: http://localhost:3001
 
-\- PostgreSQL: localhost:5432
+\- PostgreSQL: localhost:5433
 
 
 
