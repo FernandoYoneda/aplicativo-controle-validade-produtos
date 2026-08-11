@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '../../generated/prisma/enums';
 import { AuthController } from './auth.controller';
 import { AuthService, type LoginResponse } from './auth.service';
+import type { AuthenticatedRequest } from './types/authenticated-request';
+import type { AuthenticatedUser } from './types/authenticated-user';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -55,5 +57,22 @@ describe('AuthController', () => {
     await expect(controller.login(loginDto)).resolves.toEqual(loginResponse);
 
     expect(authServiceMock.login).toHaveBeenCalledWith(loginDto);
+  });
+
+  it('should return the authenticated user profile', () => {
+    const authenticatedUser: AuthenticatedUser = {
+      id: 'user-id',
+      name: 'Administrador',
+      email: 'admin@validade.local',
+      login: 'admin',
+      role: UserRole.ADMIN,
+      storeId: null,
+    };
+
+    const request = {
+      user: authenticatedUser,
+    } as AuthenticatedRequest;
+
+    expect(controller.me(request)).toEqual(authenticatedUser);
   });
 });
