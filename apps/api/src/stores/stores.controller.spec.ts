@@ -8,6 +8,17 @@ describe('StoresController', () => {
 
   const storesServiceMock = {
     findAll: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  };
+
+  const store: Store = {
+    id: '00000000-0000-4000-8000-000000000019',
+    code: 'LJ019',
+    name: 'Loja 19',
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
   };
 
   beforeEach(async () => {
@@ -31,21 +42,47 @@ describe('StoresController', () => {
   });
 
   it('should delegate store listing to the service', async () => {
-    const stores: Store[] = [
-      {
-        id: 'store-id-1',
-        code: 'LJ001',
-        name: 'Loja 01',
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    ];
+    storesServiceMock.findAll.mockResolvedValue([store]);
 
-    storesServiceMock.findAll.mockResolvedValue(stores);
-
-    await expect(controller.findAll()).resolves.toEqual(stores);
+    await expect(controller.findAll()).resolves.toEqual([store]);
 
     expect(storesServiceMock.findAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('should delegate store creation to the service', async () => {
+    const createStoreDto = {
+      code: 'LJ019',
+      name: 'Loja 19',
+    };
+
+    storesServiceMock.create.mockResolvedValue(store);
+
+    await expect(controller.create(createStoreDto)).resolves.toEqual(store);
+
+    expect(storesServiceMock.create).toHaveBeenCalledWith(createStoreDto);
+  });
+
+  it('should delegate store update to the service', async () => {
+    const updateStoreDto = {
+      name: 'Loja 19 atualizada',
+      isActive: false,
+    };
+
+    const updatedStore: Store = {
+      ...store,
+      name: updateStoreDto.name,
+      isActive: updateStoreDto.isActive,
+    };
+
+    storesServiceMock.update.mockResolvedValue(updatedStore);
+
+    await expect(controller.update(store.id, updateStoreDto)).resolves.toEqual(
+      updatedStore,
+    );
+
+    expect(storesServiceMock.update).toHaveBeenCalledWith(
+      store.id,
+      updateStoreDto,
+    );
   });
 });
