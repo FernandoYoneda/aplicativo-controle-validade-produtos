@@ -1,69 +1,176 @@
+import type { Metadata } from "next";
 import Image from "next/image";
+import { redirect } from "next/navigation";
+import { LogoutButton } from "../components/auth/logout-button";
+import { getAuthenticatedUser } from "../lib/auth";
+import type { AuthenticatedUser } from "../types/auth";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Painel administrativo",
+};
+
+const modules = [
+  {
+    number: "01",
+    title: "Lojas",
+    description:
+      "Consulte, cadastre, atualize, ative e inative as lojas do grupo.",
+    status: "API disponível",
+  },
+  {
+    number: "02",
+    title: "Usuários",
+    description:
+      "Gerencie os usuários responsáveis pelas operações de cada loja.",
+    status: "API disponível",
+  },
+  {
+    number: "03",
+    title: "Produtos",
+    description: "Acompanhe produtos e seus respectivos prazos de validade.",
+    status: "Próxima etapa",
+  },
+];
+
+function getRoleLabel(role: AuthenticatedUser["role"]): string {
+  return role === "ADMIN" ? "Administrador" : "Usuário de loja";
+}
+
+export default async function Home() {
+  let user: AuthenticatedUser | null = null;
+
+  try {
+    user = await getAuthenticatedUser();
+  } catch {
+    user = null;
+  }
+
+  if (!user) {
+    redirect("/login");
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+    <main className="min-h-screen bg-[var(--casabella-background)]">
+      <header className="border-b border-[var(--casabella-border)] bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4 sm:px-8 lg:px-10">
+          <div className="flex min-w-0 items-center gap-4">
             <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+              className="h-auto w-[150px] sm:w-[180px]"
+              src="/brand/casabella-horizontal.png"
+              alt="Grupo CasaBella Fragrâncias"
+              width={360}
+              height={203}
+              priority
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+            <div className="hidden h-9 w-px bg-[var(--casabella-border)] sm:block" />
+
+            <div className="hidden sm:block">
+              <p className="text-sm font-bold text-[var(--casabella-teal-dark)]">
+                Controle de Validade
+              </p>
+              <p className="text-xs text-[var(--casabella-muted)]">
+                Área administrativa
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden text-right md:block">
+              <p className="max-w-52 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
+                {user.name}
+              </p>
+              <p className="text-xs text-[var(--casabella-muted)]">
+                {getRoleLabel(user.role)}
+              </p>
+            </div>
+
+            <LogoutButton />
+          </div>
         </div>
-      </main>
-    </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
+        <section className="relative overflow-hidden rounded-3xl bg-[var(--casabella-teal)] px-6 py-8 text-white shadow-[0_20px_60px_rgba(0,67,77,0.13)] sm:px-10 sm:py-10">
+          <div
+            className="absolute -top-24 -right-20 size-64 rounded-full border-[45px] border-white/6"
+            aria-hidden="true"
+          />
+
+          <div
+            className="absolute -right-10 bottom-8 h-1.5 w-52 rotate-[-11deg] rounded-full bg-[var(--casabella-coral)]"
+            aria-hidden="true"
+          />
+
+          <div className="relative z-10 max-w-2xl">
+            <p className="text-sm font-bold tracking-[0.18em] text-[var(--casabella-coral)] uppercase">
+              Visão geral
+            </p>
+
+            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+              Olá, {user.name.split(" ")[0]}!
+            </h1>
+
+            <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
+              Bem-vindo ao painel de controle de validade da CasaBella.
+              Selecione uma área para começar.
+            </p>
+          </div>
+        </section>
+
+        <section className="mt-9">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold tracking-[0.15em] text-[var(--casabella-coral)] uppercase">
+                Administração
+              </p>
+
+              <h2 className="mt-1 text-2xl font-bold text-[var(--casabella-teal-dark)]">
+                Áreas do sistema
+              </h2>
+            </div>
+
+            <p className="text-sm text-[var(--casabella-muted)]">
+              Sessão protegida por autenticação
+            </p>
+          </div>
+
+          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {modules.map((module) => (
+              <article
+                className="group flex min-h-64 flex-col rounded-2xl border border-[var(--casabella-border)] bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[var(--casabella-teal)] hover:shadow-[0_18px_45px_rgba(0,67,77,0.09)]"
+                key={module.title}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <span className="flex size-11 items-center justify-center rounded-xl bg-[var(--casabella-teal-soft)] text-sm font-bold text-[var(--casabella-teal-dark)]">
+                    {module.number}
+                  </span>
+
+                  <span className="rounded-full bg-[var(--casabella-background)] px-3 py-1 text-xs font-semibold text-[var(--casabella-muted)]">
+                    {module.status}
+                  </span>
+                </div>
+
+                <h3 className="mt-6 text-xl font-bold text-[var(--casabella-teal-dark)]">
+                  {module.title}
+                </h3>
+
+                <p className="mt-2 flex-1 text-sm leading-6 text-[var(--casabella-muted)]">
+                  {module.description}
+                </p>
+
+                <p className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-teal)]">
+                  Interface em preparação
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <footer className="mt-10 border-t border-[var(--casabella-border)] py-6 text-center text-xs text-[var(--casabella-muted)]">
+          Grupo CasaBella Fragrâncias · Sistema interno de gestão
+        </footer>
+      </div>
+    </main>
   );
 }
