@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "../components/auth/logout-button";
 import { getAuthenticatedUser } from "../lib/auth";
@@ -16,6 +17,7 @@ const modules = [
     description:
       "Consulte, cadastre, atualize, ative e inative as lojas do grupo.",
     status: "API disponível",
+    href: "/stores",
   },
   {
     number: "02",
@@ -23,12 +25,14 @@ const modules = [
     description:
       "Gerencie os usuários responsáveis pelas operações de cada loja.",
     status: "API disponível",
+    href: null,
   },
   {
     number: "03",
     title: "Produtos",
     description: "Acompanhe produtos e seus respectivos prazos de validade.",
     status: "Próxima etapa",
+    href: null,
   },
 ];
 
@@ -69,6 +73,7 @@ export default async function Home() {
               <p className="text-sm font-bold text-[var(--casabella-teal-dark)]">
                 Controle de Validade
               </p>
+
               <p className="text-xs text-[var(--casabella-muted)]">
                 Área administrativa
               </p>
@@ -80,6 +85,7 @@ export default async function Home() {
               <p className="max-w-52 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
                 {user.name}
               </p>
+
               <p className="text-xs text-[var(--casabella-muted)]">
                 {getRoleLabel(user.role)}
               </p>
@@ -159,9 +165,18 @@ export default async function Home() {
                   {module.description}
                 </p>
 
-                <p className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-teal)]">
-                  Interface em preparação
-                </p>
+                {module.href ? (
+                  <Link
+                    className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-teal)] transition group-hover:text-[var(--casabella-teal-dark)]"
+                    href={module.href}
+                  >
+                    Acessar módulo <span aria-hidden="true">→</span>
+                  </Link>
+                ) : (
+                  <p className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-muted)]">
+                    Interface em preparação
+                  </p>
+                )}
               </article>
             ))}
           </div>
