@@ -10,7 +10,8 @@
     "lint": "npm run lint --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "db:validate": "npm run prisma:validate --workspace=api",
-    "db:generate": "npm run prisma:generate --workspace=api"
+    "db:generate": "npm run prisma:generate --workspace=api",
+    "db:seed": "npm run prisma:seed --workspace=api"
   },
   "keywords": [],
   "author": "",

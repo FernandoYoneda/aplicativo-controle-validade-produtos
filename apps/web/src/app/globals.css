@@ -1,26 +1,65 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --casabella-teal: #005966;
+  --casabella-teal-dark: #00434d;
+  --casabella-teal-soft: #e6f1f2;
+  --casabella-coral: #e96849;
+  --casabella-coral-dark: #d95435;
+  --casabella-graphite: #414141;
+  --casabella-muted: #6b7280;
+  --casabella-background: #f7f5f2;
+  --casabella-surface: #ffffff;
+  --casabella-border: #e5e2dd;
+  --background: var(--casabella-background);
+  --foreground: var(--casabella-graphite);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--casabella-teal);
+  --color-brand-dark: var(--casabella-teal-dark);
+  --color-brand-soft: var(--casabella-teal-soft);
+  --color-accent: var(--casabella-coral);
+  --color-accent-dark: var(--casabella-coral-dark);
+  --color-surface: var(--casabella-surface);
+  --color-muted: var(--casabella-muted);
+  --color-border: var(--casabella-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
 }
 
 body {
+  min-height: 100vh;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--casabella-coral);
+  color: #ffffff;
 }
