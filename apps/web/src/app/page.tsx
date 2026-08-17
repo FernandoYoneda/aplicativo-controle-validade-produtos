@@ -16,7 +16,7 @@ const modules = [
     title: "Lojas",
     description:
       "Consulte, cadastre, atualize, ative e inative as lojas do grupo.",
-    status: "API disponível",
+    status: "Disponível",
     href: "/stores",
   },
   {
@@ -24,8 +24,8 @@ const modules = [
     title: "Usuários",
     description:
       "Gerencie os usuários responsáveis pelas operações de cada loja.",
-    status: "API disponível",
-    href: null,
+    status: "Disponível",
+    href: "/users",
   },
   {
     number: "03",
@@ -59,12 +59,12 @@ export default async function Home() {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4 sm:px-8 lg:px-10">
           <div className="flex min-w-0 items-center gap-4">
             <Image
-              className="h-auto w-[150px] sm:w-[180px]"
-              src="/brand/casabella-horizontal.png"
               alt="Grupo CasaBella Fragrâncias"
-              width={360}
+              className="h-auto w-[150px] sm:w-[180px]"
               height={203}
               priority
+              src="/brand/casabella-horizontal.png"
+              width={360}
             />
 
             <div className="hidden h-9 w-px bg-[var(--casabella-border)] sm:block" />
@@ -73,7 +73,6 @@ export default async function Home() {
               <p className="text-sm font-bold text-[var(--casabella-teal-dark)]">
                 Controle de Validade
               </p>
-
               <p className="text-xs text-[var(--casabella-muted)]">
                 Área administrativa
               </p>
@@ -85,7 +84,6 @@ export default async function Home() {
               <p className="max-w-52 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
                 {user.name}
               </p>
-
               <p className="text-xs text-[var(--casabella-muted)]">
                 {getRoleLabel(user.role)}
               </p>
@@ -99,24 +97,21 @@ export default async function Home() {
       <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
         <section className="relative overflow-hidden rounded-3xl bg-[var(--casabella-teal)] px-6 py-8 text-white shadow-[0_20px_60px_rgba(0,67,77,0.13)] sm:px-10 sm:py-10">
           <div
+            aria-hidden="true"
             className="absolute -top-24 -right-20 size-64 rounded-full border-[45px] border-white/6"
-            aria-hidden="true"
           />
-
           <div
-            className="absolute -right-10 bottom-8 h-1.5 w-52 rotate-[-11deg] rounded-full bg-[var(--casabella-coral)]"
             aria-hidden="true"
+            className="absolute -right-10 bottom-8 h-1.5 w-52 rotate-[-11deg] rounded-full bg-[var(--casabella-coral)]"
           />
 
           <div className="relative z-10 max-w-2xl">
             <p className="text-sm font-bold tracking-[0.18em] text-[var(--casabella-coral)] uppercase">
               Visão geral
             </p>
-
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               Olá, {user.name.split(" ")[0]}!
             </h1>
-
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
               Bem-vindo ao painel de controle de validade da CasaBella.
               Selecione uma área para começar.
@@ -130,7 +125,6 @@ export default async function Home() {
               <p className="text-sm font-bold tracking-[0.15em] text-[var(--casabella-coral)] uppercase">
                 Administração
               </p>
-
               <h2 className="mt-1 text-2xl font-bold text-[var(--casabella-teal-dark)]">
                 Áreas do sistema
               </h2>
