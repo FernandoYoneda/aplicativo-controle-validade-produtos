@@ -1,0 +1,253 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { Prisma } from '../../generated/prisma/client';
+import { UserRole } from '../../generated/prisma/enums';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user';
+import { PrismaService } from '../prisma/prisma.service';
+import type { CreateExpirationDto } from './dto/create-expiration.dto';
+import type { UpdateExpirationDto } from './dto/update-expiration.dto';
+
+const expirationSelect = {
+  id: true,
+  batchNumber: true,
+  expirationDate: true,
+  quantity: true,
+  notes: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+  storeProduct: {
+    select: {
+      id: true,
+      isActive: true,
+      store: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          isActive: true,
+        },
+      },
+      product: {
+        select: {
+          id: true,
+          code: true,
+          barcode: true,
+          name: true,
+          brand: true,
+          category: true,
+          isActive: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.ProductLotSelect;
+
+export type ExpirationRecord = Prisma.ProductLotGetPayload<{
+  select: typeof expirationSelect;
+}>;
+
+@Injectable()
+export class ExpirationsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findAll(user: AuthenticatedUser): Promise<ExpirationRecord[]> {
+    const where: Prisma.ProductLotWhereInput =
+      user.role === UserRole.ADMIN
+        ? {}
+        : {
+            storeProduct: {
+              storeId: this.requireStoreUserStoreId(user),
+            },
+          };
+
+    return this.prisma.productLot.findMany({
+      where,
+      select: expirationSelect,
+      orderBy: [
+        {
+          expirationDate: 'asc',
+        },
+        {
+          createdAt: 'asc',
+        },
+      ],
+    });
+  }
+
+  async create(
+    createExpirationDto: CreateExpirationDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationRecord> {
+    const storeId = this.resolveStoreId(user, createExpirationDto.storeId);
+
+    const store = await this.prisma.store.findFirst({
+      where: {
+        id: storeId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!store) {
+      throw new BadRequestException('Loja não encontrada ou inativa.');
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: {
+        id: createExpirationDto.productId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!product) {
+      throw new BadRequestException('Produto não encontrado ou inativo.');
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const storeProduct = await transaction.storeProduct.upsert({
+        where: {
+          storeId_productId: {
+            storeId,
+            productId: product.id,
+          },
+        },
+        update: {
+          isActive: true,
+        },
+        create: {
+          storeId,
+          productId: product.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return transaction.productLot.create({
+        data: {
+          storeProductId: storeProduct.id,
+          batchNumber: createExpirationDto.batchNumber ?? null,
+          expirationDate: this.parseDateOnly(
+            createExpirationDto.expirationDate,
+          ),
+          quantity: createExpirationDto.quantity,
+          notes: createExpirationDto.notes ?? null,
+        },
+        select: expirationSelect,
+      });
+    });
+  }
+
+  async update(
+    id: string,
+    updateExpirationDto: UpdateExpirationDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationRecord> {
+    const hasChanges =
+      updateExpirationDto.batchNumber !== undefined ||
+      updateExpirationDto.expirationDate !== undefined ||
+      updateExpirationDto.quantity !== undefined ||
+      updateExpirationDto.notes !== undefined ||
+      updateExpirationDto.isActive !== undefined;
+
+    if (!hasChanges) {
+      throw new BadRequestException(
+        'Informe ao menos um campo para atualização.',
+      );
+    }
+
+    const expiration = await this.prisma.productLot.findUnique({
+      where: {
+        id,
+      },
+      select: expirationSelect,
+    });
+
+    if (!expiration) {
+      throw new NotFoundException('Registro de validade não encontrado.');
+    }
+
+    this.ensureStoreAccess(user, expiration.storeProduct.store.id);
+
+    return this.prisma.productLot.update({
+      where: {
+        id,
+      },
+      data: {
+        batchNumber: updateExpirationDto.batchNumber,
+        expirationDate:
+          updateExpirationDto.expirationDate !== undefined
+            ? this.parseDateOnly(updateExpirationDto.expirationDate)
+            : undefined,
+        quantity: updateExpirationDto.quantity,
+        notes: updateExpirationDto.notes,
+        isActive: updateExpirationDto.isActive,
+      },
+      select: expirationSelect,
+    });
+  }
+
+  private resolveStoreId(
+    user: AuthenticatedUser,
+    requestedStoreId?: string,
+  ): string {
+    if (user.role === UserRole.ADMIN) {
+      if (!requestedStoreId) {
+        throw new BadRequestException(
+          'Informe a loja responsável pelo registro de validade.',
+        );
+      }
+
+      return requestedStoreId;
+    }
+
+    const storeId = this.requireStoreUserStoreId(user);
+
+    if (requestedStoreId && requestedStoreId !== storeId) {
+      throw new ForbiddenException(
+        'Você não possui permissão para gerenciar outra loja.',
+      );
+    }
+
+    return storeId;
+  }
+
+  private requireStoreUserStoreId(user: AuthenticatedUser): string {
+    if (!user.storeId) {
+      throw new ForbiddenException('Usuário não está vinculado a uma loja.');
+    }
+
+    return user.storeId;
+  }
+
+  private ensureStoreAccess(
+    user: AuthenticatedUser,
+    expirationStoreId: string,
+  ): void {
+    if (user.role === UserRole.ADMIN) {
+      return;
+    }
+
+    const storeId = this.requireStoreUserStoreId(user);
+
+    if (storeId !== expirationStoreId) {
+      throw new ForbiddenException(
+        'Você não possui permissão para gerenciar este registro.',
+      );
+    }
+  }
+
+  private parseDateOnly(value: string): Date {
+    return new Date(`${value}T00:00:00.000Z`);
+  }
+}

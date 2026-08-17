@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { ExpirationsModule } from './expirations/expirations.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { StoresModule } from './stores/stores.module';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     StoresModule,
     ProductsModule,
+    ExpirationsModule,
   ],
   controllers: [AppController],
   providers: [
