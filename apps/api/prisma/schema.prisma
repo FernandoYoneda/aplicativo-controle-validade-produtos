@@ -23,7 +23,8 @@ model Store {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  users User[]
+  users    User[]
+  products StoreProduct[]
 
   @@map("stores")
 }
@@ -46,4 +47,59 @@ model User {
   @@index([storeId])
   @@index([role])
   @@map("users")
+}
+
+model Product {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(40)
+  barcode   String?  @unique @db.VarChar(32)
+  name      String   @db.VarChar(160)
+  brand     String?  @db.VarChar(120)
+  category  String?  @db.VarChar(120)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  stores StoreProduct[]
+
+  @@index([name])
+  @@index([isActive])
+  @@map("products")
+}
+
+model StoreProduct {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String   @map("store_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  store   Store        @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  product Product      @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  lots    ProductLot[]
+
+  @@unique([storeId, productId])
+  @@index([productId])
+  @@index([storeId, isActive])
+  @@map("store_products")
+}
+
+model ProductLot {
+  id             String   @id @default(uuid()) @db.Uuid
+  storeProductId String   @map("store_product_id") @db.Uuid
+  batchNumber    String?  @map("batch_number") @db.VarChar(80)
+  expirationDate DateTime @map("expiration_date") @db.Date
+  quantity       Int      @default(1)
+  notes          String?  @db.VarChar(500)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  storeProduct StoreProduct @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([storeProductId, expirationDate])
+  @@index([expirationDate])
+  @@index([isActive])
+  @@map("product_lots")
 }
