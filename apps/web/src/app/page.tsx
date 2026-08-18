@@ -8,7 +8,7 @@ import { getAuthenticatedUser } from "../lib/auth";
 import type { AuthenticatedUser } from "../types/auth";
 
 export const metadata: Metadata = {
-  title: "Painel administrativo",
+  title: "Painel do sistema",
 };
 
 const modules = [
@@ -19,6 +19,7 @@ const modules = [
       "Consulte, cadastre, atualize, ative e inative as lojas do grupo.",
     status: "Disponível",
     href: "/stores",
+    adminOnly: true,
   },
   {
     number: "02",
@@ -27,6 +28,7 @@ const modules = [
       "Gerencie os usuários responsáveis pelas operações de cada loja.",
     status: "Disponível",
     href: "/users",
+    adminOnly: true,
   },
   {
     number: "03",
@@ -35,6 +37,16 @@ const modules = [
       "Consulte, cadastre, atualize, ative e inative os produtos do catálogo.",
     status: "Disponível",
     href: "/products",
+    adminOnly: true,
+  },
+  {
+    number: "04",
+    title: "Validades",
+    description:
+      "Acompanhe lotes, quantidades e datas de validade dos produtos por loja.",
+    status: "Disponível",
+    href: "/expirations",
+    adminOnly: false,
   },
 ];
 
@@ -54,6 +66,11 @@ export default async function Home() {
   if (!user) {
     redirect("/login");
   }
+
+  const isAdmin = user.role === "ADMIN";
+  const availableModules = modules.filter(
+    (module) => !module.adminOnly || isAdmin,
+  );
 
   return (
     <main className="min-h-screen bg-[var(--casabella-background)]">
@@ -76,7 +93,7 @@ export default async function Home() {
                 Controle de Validade
               </p>
               <p className="text-xs text-[var(--casabella-muted)]">
-                Área administrativa
+                {isAdmin ? "Área administrativa" : "Operação da loja"}
               </p>
             </div>
           </div>
@@ -128,7 +145,7 @@ export default async function Home() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm font-bold tracking-[0.15em] text-[var(--casabella-coral)] uppercase">
-                Administração
+                {isAdmin ? "Administração" : "Operação"}
               </p>
 
               <h2 className="mt-1 text-2xl font-bold text-[var(--casabella-teal-dark)]">
@@ -141,8 +158,8 @@ export default async function Home() {
             </p>
           </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {modules.map((module) => (
+          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {availableModules.map((module) => (
               <article
                 className="group flex min-h-64 flex-col rounded-2xl border border-[var(--casabella-border)] bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[var(--casabella-teal)] hover:shadow-[0_18px_45px_rgba(0,67,77,0.09)]"
                 key={module.title}
@@ -165,18 +182,12 @@ export default async function Home() {
                   {module.description}
                 </p>
 
-                {module.href ? (
-                  <Link
-                    className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-teal)] transition group-hover:text-[var(--casabella-teal-dark)]"
-                    href={module.href}
-                  >
-                    Acessar módulo <span aria-hidden="true">→</span>
-                  </Link>
-                ) : (
-                  <p className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-muted)]">
-                    Interface em preparação
-                  </p>
-                )}
+                <Link
+                  className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-teal)] transition group-hover:text-[var(--casabella-teal-dark)]"
+                  href={module.href}
+                >
+                  Acessar módulo <span aria-hidden="true">→</span>
+                </Link>
               </article>
             ))}
           </div>
