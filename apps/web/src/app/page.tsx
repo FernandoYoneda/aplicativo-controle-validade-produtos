@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
 import { LogoutButton } from "../components/auth/logout-button";
 import { getAuthenticatedUser } from "../lib/auth";
 import type { AuthenticatedUser } from "../types/auth";
@@ -30,9 +31,10 @@ const modules = [
   {
     number: "03",
     title: "Produtos",
-    description: "Acompanhe produtos e seus respectivos prazos de validade.",
-    status: "Próxima etapa",
-    href: null,
+    description:
+      "Consulte, cadastre, atualize, ative e inative os produtos do catálogo.",
+    status: "Disponível",
+    href: "/products",
   },
 ];
 
@@ -100,6 +102,7 @@ export default async function Home() {
             aria-hidden="true"
             className="absolute -top-24 -right-20 size-64 rounded-full border-[45px] border-white/6"
           />
+
           <div
             aria-hidden="true"
             className="absolute -right-10 bottom-8 h-1.5 w-52 rotate-[-11deg] rounded-full bg-[var(--casabella-coral)]"
@@ -109,9 +112,11 @@ export default async function Home() {
             <p className="text-sm font-bold tracking-[0.18em] text-[var(--casabella-coral)] uppercase">
               Visão geral
             </p>
+
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               Olá, {user.name.split(" ")[0]}!
             </h1>
+
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
               Bem-vindo ao painel de controle de validade da CasaBella.
               Selecione uma área para começar.
@@ -125,6 +130,7 @@ export default async function Home() {
               <p className="text-sm font-bold tracking-[0.15em] text-[var(--casabella-coral)] uppercase">
                 Administração
               </p>
+
               <h2 className="mt-1 text-2xl font-bold text-[var(--casabella-teal-dark)]">
                 Áreas do sistema
               </h2>
