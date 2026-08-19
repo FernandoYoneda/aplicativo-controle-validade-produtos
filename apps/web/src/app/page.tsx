@@ -4,8 +4,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LogoutButton } from "../components/auth/logout-button";
+import { ExpirationOverview } from "../components/dashboard/expiration-overview";
 import { getAuthenticatedUser } from "../lib/auth";
+import { getExpirations } from "../lib/expirations";
 import type { AuthenticatedUser } from "../types/auth";
+import type { ExpirationRecord } from "../types/expiration";
 
 export const metadata: Metadata = {
   title: "Painel do sistema",
@@ -64,6 +67,19 @@ export default async function Home() {
   }
 
   if (!user) {
+    redirect("/login");
+  }
+
+  let expirations: ExpirationRecord[] | null = null;
+  let expirationLoadError = false;
+
+  try {
+    expirations = await getExpirations();
+  } catch {
+    expirationLoadError = true;
+  }
+
+  if (!expirationLoadError && !expirations) {
     redirect("/login");
   }
 
@@ -135,11 +151,17 @@ export default async function Home() {
             </h1>
 
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
-              Bem-vindo ao painel de controle de validade da CasaBella.
-              Selecione uma área para começar.
+              Acompanhe os alertas de validade e acesse as áreas disponíveis
+              para sua operação.
             </p>
           </div>
         </section>
+
+        <ExpirationOverview
+          expirations={expirations ?? []}
+          isAdmin={isAdmin}
+          loadError={expirationLoadError}
+        />
 
         <section className="mt-9">
           <div className="flex flex-wrap items-end justify-between gap-3">
