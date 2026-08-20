@@ -1,0 +1,85 @@
+name: Integração contínua
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validar aplicação
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CI: true
+      DATABASE_URL: postgresql://validade:validade_ci@localhost:5432/validade_db?schema=public
+      JWT_ACCESS_SECRET: ci-access-secret-used-only-for-automated-tests
+      JWT_ACCESS_EXPIRES_IN_SECONDS: 900
+      API_URL: http://localhost:3001
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: validade_db
+          POSTGRES_USER: validade
+          POSTGRES_PASSWORD: validade_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U validade -d validade_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v7
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Validar schema do banco
+        run: npm run db:validate
+
+      - name: Gerar cliente Prisma
+        run: npm run db:generate
+
+      - name: Aplicar migrações
+        working-directory: apps/api
+        run: npx prisma migrate deploy --config prisma.config.ts
+
+      - name: Verificar lint
+        run: npm run lint
+
+      - name: Verificar alterações produzidas pelo lint
+        run: git diff --exit-code
+
+      - name: Executar testes unitários
+        run: npm run test --workspace=api -- --runInBand
+
+      - name: Executar teste E2E
+        run: npm run test:e2e --workspace=api -- --runInBand
+
+      - name: Compilar aplicação
+        run: npm run build
