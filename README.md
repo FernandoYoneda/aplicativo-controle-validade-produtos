@@ -49,12 +49,15 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 │       └── ci.yml
 ├── apps/
 │   ├── api/
+│   │   ├── Dockerfile
 │   │   ├── prisma/
 │   │   ├── src/
 │   │   └── test/
 │   └── web/
+│       ├── Dockerfile
 │       ├── public/
 │       └── src/
+├── .dockerignore
 ├── docker-compose.yml
 ├── package.json
 └── README.md
@@ -98,6 +101,8 @@ POSTGRES_DB=validade_db
 POSTGRES_USER=validade
 POSTGRES_PASSWORD=validade_dev
 POSTGRES_PORT=5433
+API_PORT=3001
+WEB_PORT=3100
 ```
 
 ### API
@@ -129,6 +134,52 @@ O arquivo `apps/web/.env.local` informa onde a API está disponível:
 ```dotenv
 API_URL="http://localhost:3001"
 ```
+
+## Executar toda a aplicação com Docker
+
+Com o Docker Desktop ativo e os arquivos de ambiente configurados, execute na raiz do projeto:
+
+```powershell
+docker-compose up -d --build
+docker-compose ps -a
+```
+
+O Docker Compose:
+
+- inicia o PostgreSQL e aguarda o banco ficar saudável;
+- aplica automaticamente as migrações e executa o seed no serviço temporário `setup`;
+- inicia a API somente após a preparação do banco terminar com sucesso;
+- inicia a aplicação web somente após a API ficar saudável;
+- mantém API e aplicação web em imagens de produção executadas por usuários sem privilégios administrativos.
+
+O estado esperado é:
+
+- `postgres`, `api` e `web` em execução e marcados como `healthy`;
+- `setup` finalizado como `Exited (0)`, o que representa uma execução bem-sucedida.
+
+Endereços locais:
+
+| Serviço       | Endereço              |
+| ------------- | --------------------- |
+| Aplicação web | http://localhost:3100 |
+| API           | http://localhost:3001 |
+| PostgreSQL    | localhost:5433        |
+
+As portas externas podem ser alteradas pelas variáveis `WEB_PORT`, `API_PORT` e `POSTGRES_PORT` do arquivo `.env` da raiz.
+
+Para acompanhar os registros:
+
+```powershell
+docker-compose logs -f api web
+```
+
+Use `Ctrl+C` para sair dos registros sem desligar os serviços. Para encerrar a aplicação:
+
+```powershell
+docker-compose down
+```
+
+Esse comando preserva o volume do PostgreSQL. Use `docker-compose down -v` somente quando desejar apagar permanentemente os dados locais do banco.
 
 ## Instalação
 
