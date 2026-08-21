@@ -83,3 +83,23 @@ jobs:
 
       - name: Compilar aplicação
         run: npm run build
+
+  docker:
+    name: Validar imagens Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v7
+
+      - name: Preparar arquivos de ambiente
+        run: |
+          cp .env.example .env
+          cp apps/api/.env.example apps/api/.env
+
+      - name: Validar configuração do Docker Compose
+        run: docker compose config --quiet
+
+      - name: Compilar imagens Docker
+        run: docker compose build setup api web
