@@ -32,11 +32,24 @@ jobs:
         run: |
           OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr "[:upper:]" "[:lower:]")
           echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          echo "SETUP_IMAGE=ghcr.io/${OWNER}/aplicativo-controle-validade-produtos-setup" >> "$GITHUB_ENV"
           echo "API_IMAGE=ghcr.io/${OWNER}/aplicativo-controle-validade-produtos-api" >> "$GITHUB_ENV"
           echo "WEB_IMAGE=ghcr.io/${OWNER}/aplicativo-controle-validade-produtos-web" >> "$GITHUB_ENV"
 
       - name: Autenticar no GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Compilar imagem de preparação do banco
+        run: |
+          docker build \
+            --file apps/api/Dockerfile \
+            --target setup \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --tag "${SETUP_IMAGE}:${VERSION}" \
+            --tag "${SETUP_IMAGE}:latest" \
+            .
 
       - name: Compilar imagem da API
         run: |
@@ -64,6 +77,8 @@ jobs:
 
       - name: Publicar imagens
         run: |
+          docker push "${SETUP_IMAGE}:${VERSION}"
+          docker push "${SETUP_IMAGE}:latest"
           docker push "${API_IMAGE}:${VERSION}"
           docker push "${API_IMAGE}:latest"
           docker push "${WEB_IMAGE}:${VERSION}"
