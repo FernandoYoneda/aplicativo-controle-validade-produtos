@@ -18,6 +18,8 @@ generated/
 !**/.env.example
 !/.env.deploy.example
 
+backups/
+
 .DS_Store
 Thumbs.db
 .vscode/
