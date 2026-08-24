@@ -97,9 +97,13 @@ jobs:
         run: |
           cp .env.example .env
           cp apps/api/.env.example apps/api/.env
+          cp .env.deploy.example .env.deploy
 
       - name: Validar configuração do Docker Compose
         run: docker compose config --quiet
+
+      - name: Validar configuração de implantação
+        run: docker compose --env-file .env.deploy -f docker-compose.deploy.yml config --quiet
 
       - name: Compilar imagens Docker
         run: docker compose build setup api web

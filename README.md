@@ -35,6 +35,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - Prisma ORM 7;
 - PostgreSQL 16;
 - Docker Compose;
+- GitHub Container Registry;
 - Jest e Supertest;
 - ESLint e Prettier;
 - GitHub Actions;
@@ -46,7 +47,8 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 .
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       ├── ci.yml
+│       └── publish-images.yml
 ├── apps/
 │   ├── api/
 │   │   ├── Dockerfile
@@ -58,6 +60,8 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 │       ├── public/
 │       └── src/
 ├── .dockerignore
+├── .env.deploy.example
+├── docker-compose.deploy.yml
 ├── docker-compose.yml
 ├── package.json
 └── README.md
@@ -78,7 +82,7 @@ Confirme as versões:
 node --version
 npm.cmd --version
 docker --version
-docker-compose version
+docker compose version
 git --version
 ```
 
@@ -140,8 +144,8 @@ API_URL="http://localhost:3001"
 Com o Docker Desktop ativo e os arquivos de ambiente configurados, execute na raiz do projeto:
 
 ```powershell
-docker-compose up -d --build
-docker-compose ps -a
+docker compose up -d --build
+docker compose ps -a
 ```
 
 O Docker Compose:
@@ -170,16 +174,183 @@ As portas externas podem ser alteradas pelas variáveis `WEB_PORT`, `API_PORT` e
 Para acompanhar os registros:
 
 ```powershell
-docker-compose logs -f api web
+docker compose logs -f api web
 ```
 
-Use `Ctrl+C` para sair dos registros sem desligar os serviços. Para encerrar a aplicação:
+Use `Ctrl+C` para sair dos registros sem desligar os serviços.
+
+Para encerrar a aplicação:
 
 ```powershell
-docker-compose down
+docker compose down
 ```
 
-Esse comando preserva o volume do PostgreSQL. Use `docker-compose down -v` somente quando desejar apagar permanentemente os dados locais do banco.
+Esse comando preserva o volume do PostgreSQL. Use `docker compose down -v` somente quando desejar apagar permanentemente os dados locais do banco.
+
+## Implantação com imagens publicadas
+
+O arquivo `docker-compose.deploy.yml` permite implantar a aplicação usando imagens prontas do GitHub Container Registry, sem compilar o código-fonte no servidor.
+
+Imagens utilizadas:
+
+- `ghcr.io/fernandoyoneda/aplicativo-controle-validade-produtos-setup`;
+- `ghcr.io/fernandoyoneda/aplicativo-controle-validade-produtos-api`;
+- `ghcr.io/fernandoyoneda/aplicativo-controle-validade-produtos-web`.
+
+A versão escolhida precisa possuir as três imagens. A imagem `setup` será publicada a partir da primeira versão criada depois da inclusão deste processo de implantação.
+
+### 1. Preparar o ambiente
+
+Copie o modelo:
+
+```powershell
+Copy-Item .\.env.deploy.example .\.env.deploy
+```
+
+Abra o arquivo:
+
+```powershell
+notepad .\.env.deploy
+```
+
+Configure obrigatoriamente:
+
+- `POSTGRES_PASSWORD`: senha forte do PostgreSQL;
+- `ADMIN_PASSWORD`: senha inicial do administrador;
+- `JWT_ACCESS_SECRET`: segredo longo e aleatório para os tokens;
+- `APP_VERSION`: versão das imagens que será implantada.
+
+Em produção, prefira uma versão fixa:
+
+```dotenv
+APP_VERSION=v1.2.0
+IMAGE_PULL_POLICY=always
+```
+
+O uso de `latest` acompanha a publicação mais recente, mas torna atualizações e reversões menos previsíveis.
+
+O arquivo `.env.deploy` contém segredos, é ignorado pelo Git e nunca deve ser enviado ao repositório.
+
+### 2. Validar a configuração
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  config --quiet
+```
+
+A ausência de saída indica que a configuração é válida.
+
+### 3. Baixar as imagens
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  pull
+```
+
+### 4. Iniciar a aplicação
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  up -d
+```
+
+Consulte o estado dos serviços:
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  ps -a
+```
+
+O estado esperado é:
+
+- `postgres`, `api` e `web` em execução e saudáveis;
+- `setup` finalizado como `Exited (0)`.
+
+O serviço `setup` aplica as migrações e executa o seed antes da inicialização da API.
+
+Por padrão:
+
+| Serviço       | Endereço                    |
+| ------------- | --------------------------- |
+| Aplicação web | http://localhost:3100       |
+| API           | http://127.0.0.1:3001       |
+| Login         | http://localhost:3100/login |
+
+A aplicação web aceita conexões externas por padrão. A API fica vinculada somente ao endereço local do servidor. O PostgreSQL não possui porta publicada na configuração de implantação.
+
+### 5. Consultar os registros
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  logs -f api web
+```
+
+Use `Ctrl+C` para sair dos registros sem desligar os serviços.
+
+Os registros da preparação do banco podem ser consultados com:
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  logs setup
+```
+
+### 6. Atualizar a aplicação
+
+Altere `APP_VERSION` no arquivo `.env.deploy` para a nova versão e execute:
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  pull
+
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  up -d
+```
+
+O volume do PostgreSQL é preservado durante a atualização.
+
+### 7. Reverter uma versão
+
+Altere `APP_VERSION` no arquivo `.env.deploy` para uma versão anterior que possua as imagens `setup`, `api` e `web`.
+
+Em seguida, execute novamente os comandos `pull` e `up -d`.
+
+### 8. Encerrar a aplicação
+
+Para remover os contêineres preservando os dados:
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  down
+```
+
+Para também apagar permanentemente o banco:
+
+```powershell
+docker compose `
+  --env-file .\.env.deploy `
+  -f .\docker-compose.deploy.yml `
+  down -v
+```
+
+Use `down -v` somente quando a exclusão definitiva dos dados for intencional.
 
 ## Instalação
 
@@ -198,8 +369,8 @@ Se estiver trabalhando sem um `package-lock.json` compatível, use `npm.cmd inst
 Abra o Docker Desktop e aguarde o mecanismo ficar disponível. Em seguida:
 
 ```powershell
-docker-compose up -d postgres
-docker-compose ps
+docker compose up -d postgres
+docker compose ps
 ```
 
 O serviço deve aparecer como `healthy` e estará disponível em `localhost:5433`.
@@ -329,25 +500,49 @@ O workflow `.github/workflows/ci.yml` é executado:
 - após pushes em `develop` ou `main`;
 - manualmente pela aba **Actions** do GitHub.
 
-As validações automáticas:
+O job **Validar aplicação**:
 
-1. iniciam um PostgreSQL 16 temporário;
-2. instalam as dependências com `npm ci`;
-3. validam o schema e geram o cliente Prisma;
-4. aplicam as migrações;
-5. executam lint;
-6. verificam alterações inesperadas produzidas pelo lint;
-7. executam os testes unitários;
-8. executam os testes E2E;
-9. compilam a API e o frontend.
+1. inicia um PostgreSQL 16 temporário;
+2. instala as dependências com `npm ci`;
+3. valida o schema e gera o cliente Prisma;
+4. aplica as migrações;
+5. executa o lint;
+6. verifica alterações inesperadas produzidas pelo lint;
+7. executa os testes unitários;
+8. executa os testes E2E;
+9. compila a API e o frontend.
 
-A branch `develop` possui um ruleset ativo que:
+O job **Validar imagens Docker**:
+
+1. prepara arquivos de ambiente temporários;
+2. valida `docker-compose.yml`;
+3. valida `docker-compose.deploy.yml`;
+4. compila as imagens `setup`, `api` e `web`.
+
+## Publicação das imagens
+
+O workflow `.github/workflows/publish-images.yml` é executado quando uma tag no formato `v*.*.*` é enviada ao GitHub.
+
+O workflow:
+
+1. confirma que o commit da tag pertence à branch `main`;
+2. autentica no GitHub Container Registry usando o token temporário do GitHub Actions;
+3. compila as imagens `setup`, `api` e `web`;
+4. adiciona metadados de origem, commit e versão;
+5. publica cada imagem com a tag da versão;
+6. atualiza a tag `latest`.
+
+Nenhuma senha pessoal ou token permanente é armazenado no repositório.
+
+## Proteção das branches
+
+As branches `develop` e `main` possuem um ruleset ativo que:
 
 - exige pull request;
-- exige o check **Validar aplicação** aprovado;
+- exige os checks **Validar aplicação** e **Validar imagens Docker** aprovados;
 - exige a resolução das conversas;
 - bloqueia force push;
-- impede a exclusão da branch.
+- impede a exclusão das branches protegidas.
 
 ## Fluxo de contribuição
 
@@ -369,7 +564,7 @@ npm.cmd run build
 git diff --check
 ```
 
-Abra o pull request sempre com `develop` como branch base e aguarde o check obrigatório.
+Abra o pull request sempre com `develop` como branch base e aguarde os checks obrigatórios.
 
 ## Solução de problemas
 
@@ -384,15 +579,15 @@ open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specifie
 Abra o Docker Desktop, aguarde o mecanismo iniciar e confirme:
 
 ```powershell
-docker-compose ps
+docker compose ps
 ```
 
 ### PostgreSQL não aparece como saudável
 
-Consulte os logs:
+Consulte os registros:
 
 ```powershell
-docker-compose logs postgres
+docker compose logs postgres
 ```
 
 Confirme também se a porta `5433` está livre e se o arquivo `.env` existe na raiz.
@@ -427,6 +622,16 @@ Get-NetTCPConnection -LocalPort 3001,3100,5433 -ErrorAction SilentlyContinue
 
 Encerre o processo conflitante ou ajuste a configuração antes de reiniciar os serviços.
 
+### Imagem de implantação não encontrada
+
+Confirme se `APP_VERSION` aponta para uma versão que possui as três imagens publicadas:
+
+```dotenv
+APP_VERSION=v1.2.0
+```
+
+Consulte os pacotes publicados no GitHub Container Registry e confirme a existência das imagens `setup`, `api` e `web` para essa versão.
+
 ## Segurança
 
 - não versione arquivos `.env`;
@@ -434,7 +639,9 @@ Encerre o processo conflitante ou ajuste a configuração antes de reiniciar os 
 - troque os valores de desenvolvimento antes de uma implantação;
 - mantenha o cookie de acesso como `HttpOnly`;
 - não exponha diretamente o PostgreSQL em ambientes públicos;
-- mantenha dependências e imagens Docker atualizadas.
+- mantenha dependências e imagens Docker atualizadas;
+- prefira versões fixas das imagens em produção;
+- restrinja a API ao endereço local ou a uma rede privada.
 
 ## Licença
 
