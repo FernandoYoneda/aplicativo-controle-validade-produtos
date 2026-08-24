@@ -1,0 +1,65 @@
+name: Validar operações do banco
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+    paths:
+      - "scripts/**"
+      - ".github/workflows/database-operations.yml"
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - "scripts/**"
+      - ".github/workflows/database-operations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-operations-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validar scripts PowerShell
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v7
+
+      - name: Validar sintaxe dos scripts
+        shell: pwsh
+        run: |
+          $scripts = @(
+            ".\scripts\backup-database.ps1",
+            ".\scripts\restore-database.ps1"
+          )
+
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $script).Path,
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+
+            if ($parseErrors.Count -gt 0) {
+              $messages = $parseErrors |
+                ForEach-Object {
+                  "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)"
+                }
+
+              throw "Erros encontrados em $script`n$($messages -join "`n")"
+            }
+
+            Write-Host "Sintaxe aprovada: $script"
+          }
