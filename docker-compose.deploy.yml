@@ -1,0 +1,103 @@
+name: ${COMPOSE_PROJECT_NAME:-validade-production}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Configure POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Configure POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - validade_network
+
+  setup:
+    image: ghcr.io/fernandoyoneda/aplicativo-controle-validade-produtos-setup:${APP_VERSION:-latest}
+    pull_policy: ${IMAGE_PULL_POLICY:-always}
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:?Configure POSTGRES_USER}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Configure POSTGRES_DB}?schema=public
+      ADMIN_NAME: ${ADMIN_NAME:-Administrador}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Configure ADMIN_EMAIL}
+      ADMIN_LOGIN: ${ADMIN_LOGIN:?Configure ADMIN_LOGIN}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Configure ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - validade_network
+
+  api:
+    image: ghcr.io/fernandoyoneda/aplicativo-controle-validade-produtos-api:${APP_VERSION:-latest}
+    pull_policy: ${IMAGE_PULL_POLICY:-always}
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:?Configure POSTGRES_USER}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Configure POSTGRES_DB}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Configure JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRES_IN_SECONDS: ${JWT_ACCESS_EXPIRES_IN_SECONDS:-900}
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-3001}:3001"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - validade_network
+
+  web:
+    image: ghcr.io/fernandoyoneda/aplicativo-controle-validade-produtos-web:${APP_VERSION:-latest}
+    pull_policy: ${IMAGE_PULL_POLICY:-always}
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      API_URL: http://api:3001
+      HOSTNAME: 0.0.0.0
+      PORT: 3100
+    ports:
+      - "${WEB_BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-3100}:3100"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3100/login').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - validade_network
+
+networks:
+  validade_network:
+
+volumes:
+  postgres_data:

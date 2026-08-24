@@ -16,6 +16,7 @@ generated/
 **/.env
 **/.env.*
 !**/.env.example
+!/.env.deploy.example
 
 .DS_Store
 Thumbs.db
