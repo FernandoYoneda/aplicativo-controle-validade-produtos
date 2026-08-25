@@ -10,6 +10,21 @@ export interface Product {
   updatedAt: string;
 }
 
+export interface ProductPage {
+  items: Product[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  summary: {
+    totalProducts: number;
+    activeProducts: number;
+    inactiveProducts: number;
+  };
+}
+
 export interface CreateProductPayload {
   code: string;
   barcode?: string | null;

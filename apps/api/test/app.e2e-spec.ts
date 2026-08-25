@@ -42,6 +42,21 @@ interface ProductBody {
   isActive: boolean;
 }
 
+interface ProductPageBody {
+  items: ProductBody[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  summary: {
+    totalProducts: number;
+    activeProducts: number;
+    inactiveProducts: number;
+  };
+}
+
 interface ProductImportBody {
   summary: {
     totalRows: number;
@@ -168,6 +183,7 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/stores').expect(401);
     await request(app.getHttpServer()).get('/users').expect(401);
     await request(app.getHttpServer()).get('/products').expect(401);
+    await request(app.getHttpServer()).get('/products/page').expect(401);
     await request(app.getHttpServer()).get('/expirations').expect(401);
   });
 
@@ -325,6 +341,24 @@ describe('API (e2e)', () => {
       ),
     ).toBe(true);
 
+    const productPageResponse = await request(app.getHttpServer())
+      .get('/products/page')
+      .query({ page: 1, pageSize: 1, search: productCode.toLowerCase() })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const productPage = productPageResponse.body as ProductPageBody;
+    expect(productPage.items).toHaveLength(1);
+    expect(productPage.items[0]?.id).toBe(product.id);
+    expect(productPage.pagination).toEqual(
+      expect.objectContaining({
+        page: 1,
+        pageSize: 1,
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    );
+    expect(productPage.summary.totalProducts).toBeGreaterThanOrEqual(1);
+
     const importFile = Buffer.from(
       [
         'Quebra 1;Estoque',
@@ -383,6 +417,10 @@ describe('API (e2e)', () => {
       .get('/products')
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
+    await request(app.getHttpServer())
+      .get('/products/page')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(403);
     await request(app.getHttpServer())
       .post('/products')
       .set('Authorization', `Bearer ${tokenA}`)

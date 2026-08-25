@@ -13,6 +13,7 @@ describe('ProductsService', () => {
 
   const prismaServiceMock = {
     product: {
+      count: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
@@ -62,6 +63,71 @@ describe('ProductsService', () => {
         code: 'asc',
       },
     });
+  });
+
+  it('should return a paginated product list and global summary', async () => {
+    prismaServiceMock.product.count
+      .mockResolvedValueOnce(52)
+      .mockResolvedValueOnce(60)
+      .mockResolvedValueOnce(55);
+    prismaServiceMock.product.findMany.mockResolvedValue([product]);
+
+    await expect(service.findPage({ page: 2, pageSize: 25 })).resolves.toEqual({
+      items: [product],
+      pagination: {
+        page: 2,
+        pageSize: 25,
+        totalItems: 52,
+        totalPages: 3,
+      },
+      summary: {
+        totalProducts: 60,
+        activeProducts: 55,
+        inactiveProducts: 5,
+      },
+    });
+
+    expect(prismaServiceMock.product.findMany).toHaveBeenCalledWith({
+      where: undefined,
+      orderBy: {
+        code: 'asc',
+      },
+      skip: 25,
+      take: 25,
+    });
+  });
+
+  it('should search products and clamp a page beyond the last page', async () => {
+    prismaServiceMock.product.count
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(60)
+      .mockResolvedValueOnce(55);
+    prismaServiceMock.product.findMany.mockResolvedValue([product]);
+
+    const result = await service.findPage({
+      page: 8,
+      pageSize: 25,
+      search: '  produto  ',
+    });
+
+    expect(result.pagination.page).toBe(1);
+    expect(prismaServiceMock.product.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        OR: [
+          { code: { contains: 'produto', mode: 'insensitive' } },
+          { barcode: { contains: 'produto', mode: 'insensitive' } },
+          { name: { contains: 'produto', mode: 'insensitive' } },
+          { brand: { contains: 'produto', mode: 'insensitive' } },
+          { category: { contains: 'produto', mode: 'insensitive' } },
+        ],
+      },
+    });
+    expect(prismaServiceMock.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 25,
+      }),
+    );
   });
 
   it('should create a product when code and barcode are available', async () => {
