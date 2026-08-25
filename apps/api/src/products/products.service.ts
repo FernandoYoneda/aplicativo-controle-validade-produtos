@@ -4,10 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Product } from '../../generated/prisma/client';
+import type { Prisma, Product } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateProductDto } from './dto/create-product.dto';
+import type { ListProductsQueryDto } from './dto/list-products-query.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
+import type { ProductPage } from './product-page.types';
 
 @Injectable()
 export class ProductsService {
@@ -19,6 +21,56 @@ export class ProductsService {
         code: 'asc',
       },
     });
+  }
+
+  async findPage(query: ListProductsQueryDto): Promise<ProductPage> {
+    const search = query.search?.trim();
+    const where: Prisma.ProductWhereInput | undefined = search
+      ? {
+          OR: [
+            { code: { contains: search, mode: 'insensitive' } },
+            { barcode: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+            { brand: { contains: search, mode: 'insensitive' } },
+            { category: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : undefined;
+
+    const [totalItems, totalProducts, activeProducts] = await Promise.all([
+      this.prisma.product.count({ where }),
+      this.prisma.product.count(),
+      this.prisma.product.count({
+        where: {
+          isActive: true,
+        },
+      }),
+    ]);
+    const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const items = await this.prisma.product.findMany({
+      where,
+      orderBy: {
+        code: 'asc',
+      },
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+    });
+
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages,
+      },
+      summary: {
+        totalProducts,
+        activeProducts,
+        inactiveProducts: totalProducts - activeProducts,
+      },
+    };
   }
 
   async create(createProductDto: CreateProductDto): Promise<Product> {

@@ -1,15 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiErrorResponse } from "../../types/auth";
-import type { Product, ProductImportResult } from "../../types/product";
+import type {
+  Product,
+  ProductImportResult,
+  ProductPage,
+} from "../../types/product";
 import { ProductFormModal } from "./product-form-modal";
 import { ProductImportModal } from "./product-import-modal";
 
 interface ProductsManagerProps {
-  initialProducts: Product[];
+  initialPage: ProductPage;
 }
 
 function getErrorMessage(errorResponse: ApiErrorResponse): string {
@@ -20,21 +24,24 @@ function getErrorMessage(errorResponse: ApiErrorResponse): string {
   return errorResponse.message ?? "Não foi possível listar os produtos.";
 }
 
-function sortProducts(products: Product[]): Product[] {
-  return [...products].sort((firstProduct, secondProduct) =>
-    firstProduct.code.localeCompare(secondProduct.code, "pt-BR", {
-      numeric: true,
-      sensitivity: "base",
-    }),
-  );
+function getVisiblePages(currentPage: number, totalPages: number): number[] {
+  const pages = new Set([1, totalPages]);
+
+  for (let page = currentPage - 1; page <= currentPage + 1; page += 1) {
+    if (page >= 1 && page <= totalPages) {
+      pages.add(page);
+    }
+  }
+
+  return [...pages].sort((firstPage, secondPage) => firstPage - secondPage);
 }
 
-export function ProductsManager({ initialProducts }: ProductsManagerProps) {
+export function ProductsManager({ initialPage }: ProductsManagerProps) {
   const router = useRouter();
+  const activeRequest = useRef<AbortController | null>(null);
+  const isFirstSearchRender = useRef(true);
 
-  const [products, setProducts] = useState<Product[]>(
-    sortProducts(initialProducts),
-  );
+  const [productPage, setProductPage] = useState(initialPage);
   const [search, setSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -43,63 +50,99 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-  const loadProducts = useCallback(async () => {
-    setErrorMessage("");
-    setSuccessMessage("");
-    setIsLoading(true);
+  const loadProducts = useCallback(
+    async (page: number, searchValue: string) => {
+      activeRequest.current?.abort();
+      const controller = new AbortController();
+      activeRequest.current = controller;
 
-    try {
-      const response = await fetch("/api/products", {
-        method: "GET",
-        cache: "no-store",
+      setErrorMessage("");
+      setIsLoading(true);
+
+      const parameters = new URLSearchParams({
+        page: String(page),
+        pageSize: String(productPage.pagination.pageSize),
       });
+      const normalizedSearch = searchValue.trim();
 
-      if (response.status === 401) {
-        router.replace("/login");
-        router.refresh();
-        return;
+      if (normalizedSearch) {
+        parameters.set("search", normalizedSearch);
       }
 
-      const responseBody = (await response.json()) as
-        Product[] | ApiErrorResponse;
+      try {
+        const response = await fetch(`/api/products/page?${parameters}`, {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        setErrorMessage(getErrorMessage(responseBody as ApiErrorResponse));
-        return;
+        if (response.status === 401) {
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
+
+        const responseBody = (await response.json()) as
+          ProductPage | ApiErrorResponse;
+
+        if (!response.ok) {
+          setErrorMessage(getErrorMessage(responseBody as ApiErrorResponse));
+          return;
+        }
+
+        setProductPage(responseBody as ProductPage);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setErrorMessage("Não foi possível conectar ao serviço de produtos.");
+      } finally {
+        if (activeRequest.current === controller) {
+          setIsLoading(false);
+        }
       }
-
-      setProducts(sortProducts(responseBody as Product[]));
-    } catch {
-      setErrorMessage("Não foi possível conectar ao serviço de produtos.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [router]);
-
-  const filteredProducts = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    if (!normalizedSearch) {
-      return products;
-    }
-
-    return products.filter((product) =>
-      [
-        product.code,
-        product.barcode ?? "",
-        product.name,
-        product.brand ?? "",
-        product.category ?? "",
-      ].some((value) => value.toLowerCase().includes(normalizedSearch)),
-    );
-  }, [products, search]);
-
-  const activeProducts = useMemo(
-    () => products.filter((product) => product.isActive).length,
-    [products],
+    },
+    [productPage.pagination.pageSize, router],
   );
 
-  const inactiveProducts = products.length - activeProducts;
+  useEffect(() => {
+    if (isFirstSearchRender.current) {
+      isFirstSearchRender.current = false;
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setSuccessMessage("");
+      void loadProducts(1, search);
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [loadProducts, search]);
+
+  useEffect(
+    () => () => {
+      activeRequest.current?.abort();
+    },
+    [],
+  );
+
+  const visiblePages = useMemo(
+    () =>
+      getVisiblePages(
+        productPage.pagination.page,
+        productPage.pagination.totalPages,
+      ),
+    [productPage.pagination.page, productPage.pagination.totalPages],
+  );
+  const firstVisibleItem =
+    productPage.pagination.totalItems === 0
+      ? 0
+      : (productPage.pagination.page - 1) * productPage.pagination.pageSize + 1;
+  const lastVisibleItem = Math.min(
+    productPage.pagination.page * productPage.pagination.pageSize,
+    productPage.pagination.totalItems,
+  );
 
   function openCreateForm() {
     setSelectedProduct(null);
@@ -120,38 +163,48 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
     setSelectedProduct(null);
   }
 
-  function handleProductSaved(savedProduct: Product) {
-    const productAlreadyExists = products.some(
-      (product) => product.id === savedProduct.id,
+  async function handleProductSaved(savedProduct: Product) {
+    const wasEditing = selectedProduct !== null;
+
+    closeForm();
+    await loadProducts(
+      wasEditing ? productPage.pagination.page : 1,
+      wasEditing ? search : "",
     );
 
-    setProducts((currentProducts) => {
-      const updatedProducts = productAlreadyExists
-        ? currentProducts.map((product) =>
-            product.id === savedProduct.id ? savedProduct : product,
-          )
-        : [...currentProducts, savedProduct];
-
-      return sortProducts(updatedProducts);
-    });
+    if (!wasEditing) {
+      setSearch("");
+    }
 
     setSuccessMessage(
-      productAlreadyExists
+      wasEditing
         ? `O produto ${savedProduct.code} foi atualizado com sucesso.`
         : `O produto ${savedProduct.code} foi cadastrado com sucesso.`,
     );
-
-    closeForm();
   }
 
   async function handleProductsImported(result: ProductImportResult) {
     setIsImportOpen(false);
-    await loadProducts();
+    setSearch("");
+    await loadProducts(1, "");
     setSuccessMessage(
       result.importedProducts === 1
         ? "1 produto foi cadastrado com sucesso pela planilha."
         : `${result.importedProducts} produtos foram cadastrados com sucesso pela planilha.`,
     );
+  }
+
+  function changePage(page: number) {
+    if (
+      page === productPage.pagination.page ||
+      page < 1 ||
+      page > productPage.pagination.totalPages
+    ) {
+      return;
+    }
+
+    setSuccessMessage("");
+    void loadProducts(page, search);
   }
 
   return (
@@ -163,7 +216,7 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
               Total de produtos
             </p>
             <p className="mt-2 text-3xl font-bold text-[var(--casabella-teal-dark)]">
-              {isLoading ? "—" : products.length}
+              {isLoading ? "—" : productPage.summary.totalProducts}
             </p>
           </article>
 
@@ -172,7 +225,7 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
               Produtos ativos
             </p>
             <p className="mt-2 text-3xl font-bold text-emerald-700">
-              {isLoading ? "—" : activeProducts}
+              {isLoading ? "—" : productPage.summary.activeProducts}
             </p>
           </article>
 
@@ -181,7 +234,7 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
               Produtos inativos
             </p>
             <p className="mt-2 text-3xl font-bold text-[var(--casabella-coral-dark)]">
-              {isLoading ? "—" : inactiveProducts}
+              {isLoading ? "—" : productPage.summary.inactiveProducts}
             </p>
           </article>
         </section>
@@ -210,7 +263,9 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
               <button
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoading}
-                onClick={() => void loadProducts()}
+                onClick={() =>
+                  void loadProducts(productPage.pagination.page, search)
+                }
                 type="button"
               >
                 {isLoading ? "Atualizando..." : "Atualizar lista"}
@@ -268,19 +323,19 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
             </div>
           ) : null}
 
-          {!isLoading && !errorMessage && filteredProducts.length === 0 ? (
+          {!isLoading && !errorMessage && productPage.items.length === 0 ? (
             <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center">
               <p className="font-semibold text-[var(--casabella-graphite)]">
                 Nenhum produto encontrado
               </p>
 
               <p className="mt-1 max-w-md text-sm leading-6 text-[var(--casabella-muted)]">
-                {products.length === 0
+                {productPage.summary.totalProducts === 0
                   ? "Cadastre o primeiro produto para iniciar o catálogo."
                   : "Tente buscar por outro código, nome, marca ou categoria."}
               </p>
 
-              {products.length === 0 ? (
+              {productPage.summary.totalProducts === 0 ? (
                 <button
                   className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--casabella-teal-dark)]"
                   onClick={openCreateForm}
@@ -293,69 +348,137 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
             </div>
           ) : null}
 
-          {!isLoading && !errorMessage && filteredProducts.length > 0 ? (
-            <div className="divide-y divide-[var(--casabella-border)]">
-              {filteredProducts.map((product) => (
-                <article
-                  className="grid gap-4 p-5 transition hover:bg-[var(--casabella-background)] lg:grid-cols-[110px_minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] lg:items-center"
-                  key={product.id}
-                >
-                  <div>
-                    <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                      Código
-                    </p>
-                    <p className="mt-1 font-bold text-[var(--casabella-teal-dark)]">
-                      {product.code}
-                    </p>
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                      Produto
-                    </p>
-                    <p className="mt-1 truncate font-semibold text-[var(--casabella-graphite)]">
-                      {product.name}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
-                      {product.barcode
-                        ? `Código de barras: ${product.barcode}`
-                        : "Sem código de barras"}
-                    </p>
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                      Classificação
-                    </p>
-                    <p className="mt-1 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
-                      {product.category ?? "Sem categoria"}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
-                      {product.brand ?? "Sem marca"}
-                    </p>
-                  </div>
-
-                  <span
-                    className={
-                      product.isActive
-                        ? "w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
-                        : "w-fit rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
-                    }
+          {!isLoading && !errorMessage && productPage.items.length > 0 ? (
+            <>
+              <div className="divide-y divide-[var(--casabella-border)]">
+                {productPage.items.map((product) => (
+                  <article
+                    className="grid gap-4 p-5 transition hover:bg-[var(--casabella-background)] lg:grid-cols-[110px_minmax(0,1.5fr)_minmax(0,1fr)_auto_auto] lg:items-center"
+                    key={product.id}
                   >
-                    {product.isActive ? "Ativo" : "Inativo"}
-                  </span>
+                    <div>
+                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                        Código
+                      </p>
+                      <p className="mt-1 font-bold text-[var(--casabella-teal-dark)]">
+                        {product.code}
+                      </p>
+                    </div>
 
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                        Produto
+                      </p>
+                      <p className="mt-1 truncate font-semibold text-[var(--casabella-graphite)]">
+                        {product.name}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
+                        {product.barcode
+                          ? `Código de barras: ${product.barcode}`
+                          : "Sem código de barras"}
+                      </p>
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                        Classificação
+                      </p>
+                      <p className="mt-1 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
+                        {product.category ?? "Sem categoria"}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
+                        {product.brand ?? "Sem marca"}
+                      </p>
+                    </div>
+
+                    <span
+                      className={
+                        product.isActive
+                          ? "w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"
+                          : "w-fit rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
+                      }
+                    >
+                      {product.isActive ? "Ativo" : "Inativo"}
+                    </span>
+
+                    <button
+                      aria-label={`Editar o produto ${product.code}`}
+                      className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)]"
+                      onClick={() => openEditForm(product)}
+                      type="button"
+                    >
+                      Editar
+                    </button>
+                  </article>
+                ))}
+              </div>
+
+              <nav
+                aria-label="Paginação dos produtos"
+                className="flex flex-col gap-4 border-t border-[var(--casabella-border)] p-5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p className="text-sm text-[var(--casabella-muted)]">
+                  Exibindo {firstVisibleItem}–{lastVisibleItem} de{" "}
+                  {productPage.pagination.totalItems} produtos
+                  {search.trim() ? " encontrados" : ""}.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    aria-label={`Editar o produto ${product.code}`}
-                    className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)]"
-                    onClick={() => openEditForm(product)}
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={productPage.pagination.page === 1 || isLoading}
+                    onClick={() => changePage(productPage.pagination.page - 1)}
                     type="button"
                   >
-                    Editar
+                    Anterior
                   </button>
-                </article>
-              ))}
-            </div>
+
+                  {visiblePages.map((page, index) => (
+                    <div className="contents" key={page}>
+                      {index > 0 && page - visiblePages[index - 1] > 1 ? (
+                        <span
+                          aria-hidden="true"
+                          className="px-1 text-[var(--casabella-muted)]"
+                        >
+                          …
+                        </span>
+                      ) : null}
+
+                      <button
+                        aria-current={
+                          page === productPage.pagination.page
+                            ? "page"
+                            : undefined
+                        }
+                        aria-label={`Ir para a página ${page}`}
+                        className={
+                          page === productPage.pagination.page
+                            ? "inline-flex size-9 items-center justify-center rounded-xl bg-[var(--casabella-teal)] text-sm font-bold text-white"
+                            : "inline-flex size-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)]"
+                        }
+                        disabled={isLoading}
+                        onClick={() => changePage(page)}
+                        type="button"
+                      >
+                        {page}
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={
+                      productPage.pagination.page ===
+                        productPage.pagination.totalPages || isLoading
+                    }
+                    onClick={() => changePage(productPage.pagination.page + 1)}
+                    type="button"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </nav>
+            </>
           ) : null}
         </section>
       </div>
