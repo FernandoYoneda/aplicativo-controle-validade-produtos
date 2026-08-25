@@ -13,6 +13,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - cadastro, consulta, atualização, ativação e inativação de lojas;
 - cadastro, consulta, atualização, ativação e inativação de usuários de loja;
 - cadastro, consulta, atualização, ativação e inativação de produtos;
+- importação de produtos por arquivos XLSX, XLS ou CSV com pré-visualização, deduplicação e filtros de materiais não comercializáveis;
 - gerenciamento de lotes, quantidades e datas de validade de todas as lojas;
 - pesquisa por produto, loja, lote, data ou situação;
 - acompanhamento de produtos vencidos, próximos do vencimento e dentro da validade.
@@ -24,6 +25,22 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - consulta e gerenciamento das validades vinculadas à sua loja;
 - cadastro de lotes usando automaticamente a loja associada ao usuário;
 - isolamento de dados entre unidades.
+
+### Importação de produtos
+
+Administradores podem importar o catálogo pela tela de Produtos. O sistema utiliza somente a coluna `Quebra 1`, no formato `código - nome do produto`, e apresenta uma prévia antes da confirmação.
+
+Durante a análise:
+
+- cada código é considerado apenas uma vez;
+- produtos já cadastrados são ignorados;
+- códigos repetidos com nomes diferentes são sinalizados para revisão;
+- amostras e demonstradores são excluídos;
+- sacolas, caixas, papéis de seda, etiquetas e outros materiais operacionais são excluídos;
+- materiais com códigos iniciados por `999` são excluídos;
+- arquivos CSV em UTF-8 ou Windows-1252 são aceitos.
+
+O limite por arquivo é de 15 MB e 100.000 linhas.
 
 ## Tecnologias
 

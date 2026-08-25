@@ -1,31 +1,12 @@
-export interface Product {
-  id: string;
-  code: string;
-  barcode: string | null;
-  name: string;
-  brand: string | null;
-  category: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+export interface UploadedProductSpreadsheet {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
 }
 
-export interface CreateProductPayload {
-  code: string;
-  barcode?: string | null;
-  name: string;
-  brand?: string | null;
-  category?: string | null;
-}
-
-export interface UpdateProductPayload {
-  code?: string;
-  barcode?: string | null;
-  name?: string;
-  brand?: string | null;
-  category?: string | null;
-  isActive?: boolean;
-}
+export type ProductImportExclusionReason =
+  'Amostra' | 'Demonstrador' | 'Embalagem ou material operacional';
 
 export interface ProductImportItem {
   code: string;
@@ -33,7 +14,7 @@ export interface ProductImportItem {
 }
 
 export interface ProductImportExcludedItem extends ProductImportItem {
-  reason: "Amostra" | "Demonstrador" | "Embalagem ou material operacional";
+  reason: ProductImportExclusionReason;
 }
 
 export interface ProductImportIssue {
