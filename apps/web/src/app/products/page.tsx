@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
 import { LogoutButton } from "../../components/auth/logout-button";
 import { ProductsManager } from "../../components/products/products-manager";
 import { getAuthenticatedUser } from "../../lib/auth";
-import { getProducts } from "../../lib/products";
+import { getProductPage } from "../../lib/products";
 import type { AuthenticatedUser } from "../../types/auth";
-import type { Product } from "../../types/product";
+import type { ProductPage } from "../../types/product";
 
 export const metadata: Metadata = {
   title: "Gerenciamento de produtos",
@@ -31,16 +31,16 @@ export default async function ProductsPage() {
     redirect("/");
   }
 
-  let products: Product[] | null = null;
+  let productPage: ProductPage | null = null;
   let loadError = false;
 
   try {
-    products = await getProducts();
+    productPage = await getProductPage();
   } catch {
     loadError = true;
   }
 
-  if (!loadError && !products) {
+  if (!loadError && !productPage) {
     redirect("/login");
   }
 
@@ -147,7 +147,7 @@ export default async function ProductsPage() {
               </Link>
             </div>
           ) : (
-            <ProductsManager initialProducts={products ?? []} />
+            <ProductsManager initialPage={productPage!} />
           )}
         </section>
 

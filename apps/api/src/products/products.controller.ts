@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -17,7 +18,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateProductDto } from './dto/create-product.dto';
+import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import type { ProductPage } from './product-page.types';
 import { ProductImportService } from './product-import.service';
 import type {
   ProductImportPreview,
@@ -38,6 +41,12 @@ export class ProductsController {
   @Roles(UserRole.ADMIN, UserRole.STORE_USER)
   findAll(): Promise<Product[]> {
     return this.productsService.findAll();
+  }
+
+  @Get('page')
+  @Roles(UserRole.ADMIN)
+  findPage(@Query() query: ListProductsQueryDto): Promise<ProductPage> {
+    return this.productsService.findPage(query);
   }
 
   @Post()

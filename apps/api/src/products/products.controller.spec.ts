@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Product } from '../../generated/prisma/client';
 import type { CreateProductDto } from './dto/create-product.dto';
+import type { ListProductsQueryDto } from './dto/list-products-query.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import { ProductImportService } from './product-import.service';
 import type {
@@ -28,6 +29,7 @@ describe('ProductsController', () => {
 
   const productsServiceMock = {
     findAll: jest.fn(),
+    findPage: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -67,6 +69,32 @@ describe('ProductsController', () => {
     await expect(controller.findAll()).resolves.toEqual([product]);
 
     expect(productsServiceMock.findAll).toHaveBeenCalledWith();
+  });
+
+  it('should delegate paginated product listing to the service', async () => {
+    const query: ListProductsQueryDto = {
+      page: 2,
+      pageSize: 25,
+      search: 'produto',
+    };
+    const page = {
+      items: [product],
+      pagination: {
+        page: 2,
+        pageSize: 25,
+        totalItems: 30,
+        totalPages: 2,
+      },
+      summary: {
+        totalProducts: 40,
+        activeProducts: 35,
+        inactiveProducts: 5,
+      },
+    };
+    productsServiceMock.findPage.mockResolvedValue(page);
+
+    await expect(controller.findPage(query)).resolves.toEqual(page);
+    expect(productsServiceMock.findPage).toHaveBeenCalledWith(query);
   });
 
   it('should delegate product creation to the service', async () => {

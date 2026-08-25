@@ -13,6 +13,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - cadastro, consulta, atualização, ativação e inativação de lojas;
 - cadastro, consulta, atualização, ativação e inativação de usuários de loja;
 - cadastro, consulta, atualização, ativação e inativação de produtos;
+- catálogo administrativo paginado, com busca por código, código de barras, nome, marca ou categoria;
 - importação de produtos por arquivos XLSX, XLS ou CSV com pré-visualização, deduplicação e filtros de materiais não comercializáveis;
 - gerenciamento de lotes, quantidades e datas de validade de todas as lojas;
 - pesquisa por produto, loja, lote, data ou situação;
