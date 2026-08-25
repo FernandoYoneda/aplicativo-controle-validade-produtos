@@ -184,6 +184,7 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/users').expect(401);
     await request(app.getHttpServer()).get('/products').expect(401);
     await request(app.getHttpServer()).get('/products/page').expect(401);
+    await request(app.getHttpServer()).get('/products/search').expect(401);
     await request(app.getHttpServer()).get('/expirations').expect(401);
   });
 
@@ -359,6 +360,15 @@ describe('API (e2e)', () => {
     );
     expect(productPage.summary.totalProducts).toBeGreaterThanOrEqual(1);
 
+    const adminProductSearchResponse = await request(app.getHttpServer())
+      .get('/products/search')
+      .query({ search: productCode.toLowerCase(), limit: 20 })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(
+      (adminProductSearchResponse.body as ProductBody[]).map(({ id }) => id),
+    ).toContain(product.id);
+
     const importFile = Buffer.from(
       [
         'Quebra 1;Estoque',
@@ -417,6 +427,14 @@ describe('API (e2e)', () => {
       .get('/products')
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(200);
+    const storeProductSearchResponse = await request(app.getHttpServer())
+      .get('/products/search')
+      .query({ search: productCode, limit: 20 })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    expect(
+      (storeProductSearchResponse.body as ProductBody[]).map(({ id }) => id),
+    ).toContain(product.id);
     await request(app.getHttpServer())
       .get('/products/page')
       .set('Authorization', `Bearer ${tokenA}`)

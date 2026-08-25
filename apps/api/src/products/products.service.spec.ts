@@ -130,6 +130,37 @@ describe('ProductsService', () => {
     );
   });
 
+  it('should search only active products with a limited result set', async () => {
+    prismaServiceMock.product.findMany.mockResolvedValue([product]);
+
+    await expect(
+      service.searchActive({ search: '  PROD  ', limit: 20 }),
+    ).resolves.toEqual([product]);
+
+    expect(prismaServiceMock.product.findMany).toHaveBeenCalledWith({
+      where: {
+        isActive: true,
+        OR: [
+          { code: { contains: 'PROD', mode: 'insensitive' } },
+          { barcode: { contains: 'PROD', mode: 'insensitive' } },
+          { name: { contains: 'PROD', mode: 'insensitive' } },
+        ],
+      },
+      orderBy: {
+        code: 'asc',
+      },
+      take: 20,
+    });
+  });
+
+  it('should not query the database when product search is empty', async () => {
+    await expect(
+      service.searchActive({ search: '   ', limit: 20 }),
+    ).resolves.toEqual([]);
+
+    expect(prismaServiceMock.product.findMany).not.toHaveBeenCalled();
+  });
+
   it('should create a product when code and barcode are available', async () => {
     prismaServiceMock.product.findUnique
       .mockResolvedValueOnce(null)

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { Product } from '../../generated/prisma/client';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto';
+import type { SearchProductsQueryDto } from './dto/search-products-query.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import { ProductImportService } from './product-import.service';
 import type {
@@ -30,6 +31,7 @@ describe('ProductsController', () => {
   const productsServiceMock = {
     findAll: jest.fn(),
     findPage: jest.fn(),
+    searchActive: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -95,6 +97,17 @@ describe('ProductsController', () => {
 
     await expect(controller.findPage(query)).resolves.toEqual(page);
     expect(productsServiceMock.findPage).toHaveBeenCalledWith(query);
+  });
+
+  it('should delegate active product search to the service', async () => {
+    const query: SearchProductsQueryDto = {
+      search: 'produto',
+      limit: 20,
+    };
+    productsServiceMock.searchActive.mockResolvedValue([product]);
+
+    await expect(controller.search(query)).resolves.toEqual([product]);
+    expect(productsServiceMock.searchActive).toHaveBeenCalledWith(query);
   });
 
   it('should delegate product creation to the service', async () => {
