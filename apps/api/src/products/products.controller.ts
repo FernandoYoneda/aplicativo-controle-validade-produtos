@@ -19,6 +19,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
+import { SearchProductsQueryDto } from './dto/search-products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import type { ProductPage } from './product-page.types';
 import { ProductImportService } from './product-import.service';
@@ -47,6 +48,12 @@ export class ProductsController {
   @Roles(UserRole.ADMIN)
   findPage(@Query() query: ListProductsQueryDto): Promise<ProductPage> {
     return this.productsService.findPage(query);
+  }
+
+  @Get('search')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  search(@Query() query: SearchProductsQueryDto): Promise<Product[]> {
+    return this.productsService.searchActive(query);
   }
 
   @Post()

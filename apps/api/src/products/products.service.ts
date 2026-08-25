@@ -8,6 +8,7 @@ import type { Prisma, Product } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto';
+import type { SearchProductsQueryDto } from './dto/search-products-query.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import type { ProductPage } from './product-page.types';
 
@@ -71,6 +72,29 @@ export class ProductsService {
         inactiveProducts: totalProducts - activeProducts,
       },
     };
+  }
+
+  searchActive(query: SearchProductsQueryDto): Promise<Product[]> {
+    const search = query.search.trim();
+
+    if (!search) {
+      return Promise.resolve([]);
+    }
+
+    return this.prisma.product.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { code: { contains: search, mode: 'insensitive' } },
+          { barcode: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: {
+        code: 'asc',
+      },
+      take: query.limit,
+    });
   }
 
   async create(createProductDto: CreateProductDto): Promise<Product> {

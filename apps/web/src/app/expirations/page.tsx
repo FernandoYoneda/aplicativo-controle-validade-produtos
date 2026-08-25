@@ -7,11 +7,9 @@ import { LogoutButton } from "../../components/auth/logout-button";
 import { ExpirationsManager } from "../../components/expirations/expirations-manager";
 import { getAuthenticatedUser } from "../../lib/auth";
 import { getExpirations } from "../../lib/expirations";
-import { getProducts } from "../../lib/products";
 import { getStores } from "../../lib/stores";
 import type { AuthenticatedUser } from "../../types/auth";
 import type { ExpirationRecord } from "../../types/expiration";
-import type { Product } from "../../types/product";
 import type { Store } from "../../types/store";
 
 export const metadata: Metadata = {
@@ -34,21 +32,19 @@ export default async function ExpirationsPage() {
   const isAdmin = user.role === "ADMIN";
 
   let expirations: ExpirationRecord[] | null = null;
-  let products: Product[] | null = null;
   let stores: Store[] | null = [];
   let loadError = false;
 
   try {
-    [expirations, products, stores] = await Promise.all([
+    [expirations, stores] = await Promise.all([
       getExpirations(),
-      getProducts(),
       isAdmin ? getStores() : Promise.resolve([]),
     ]);
   } catch {
     loadError = true;
   }
 
-  if (!loadError && (!expirations || !products || (isAdmin && !stores))) {
+  if (!loadError && (!expirations || (isAdmin && !stores))) {
     redirect("/login");
   }
 
@@ -158,7 +154,6 @@ export default async function ExpirationsPage() {
             <ExpirationsManager
               initialExpirations={expirations ?? []}
               isAdmin={isAdmin}
-              products={products ?? []}
               stores={stores ?? []}
             />
           )}
