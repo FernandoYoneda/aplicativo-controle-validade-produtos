@@ -2,6 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { Product } from '../../generated/prisma/client';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
+import { ProductImportService } from './product-import.service';
+import type {
+  ProductImportPreview,
+  ProductImportResult,
+  UploadedProductSpreadsheet,
+} from './product-import.types';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
 
@@ -26,6 +32,11 @@ describe('ProductsController', () => {
     update: jest.fn(),
   };
 
+  const productImportServiceMock = {
+    preview: jest.fn(),
+    import: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -35,6 +46,10 @@ describe('ProductsController', () => {
         {
           provide: ProductsService,
           useValue: productsServiceMock,
+        },
+        {
+          provide: ProductImportService,
+          useValue: productImportServiceMock,
         },
       ],
     }).compile();
@@ -68,6 +83,69 @@ describe('ProductsController', () => {
     await expect(controller.create(createProductDto)).resolves.toEqual(product);
 
     expect(productsServiceMock.create).toHaveBeenCalledWith(createProductDto);
+  });
+
+  it('should delegate spreadsheet preview to the import service', async () => {
+    const file = {
+      buffer: Buffer.from('Quebra 1;Outro\n12345 - Produto;valor'),
+      originalname: 'produtos.csv',
+      mimetype: 'text/csv',
+      size: 44,
+    } satisfies UploadedProductSpreadsheet;
+    const preview = {
+      fileName: file.originalname,
+      summary: {
+        totalRows: 1,
+        validRows: 1,
+        invalidRows: 0,
+        duplicateRows: 0,
+        uniqueProducts: 1,
+        excludedProducts: 0,
+        conflictingProducts: 0,
+        existingProducts: 0,
+        importableProducts: 1,
+      },
+      products: [{ code: '12345', name: 'Produto' }],
+      excluded: [],
+      issues: [],
+      samplesTruncated: false,
+    } satisfies ProductImportPreview;
+    productImportServiceMock.preview.mockResolvedValue(preview);
+
+    await expect(controller.previewImport(file)).resolves.toEqual(preview);
+    expect(productImportServiceMock.preview).toHaveBeenCalledWith(file);
+  });
+
+  it('should delegate spreadsheet import to the import service', async () => {
+    const file = {
+      buffer: Buffer.from('Quebra 1\n12345 - Produto'),
+      originalname: 'produtos.csv',
+      mimetype: 'text/csv',
+      size: 28,
+    } satisfies UploadedProductSpreadsheet;
+    const result = {
+      fileName: file.originalname,
+      summary: {
+        totalRows: 1,
+        validRows: 1,
+        invalidRows: 0,
+        duplicateRows: 0,
+        uniqueProducts: 1,
+        excludedProducts: 0,
+        conflictingProducts: 0,
+        existingProducts: 0,
+        importableProducts: 1,
+      },
+      products: [{ code: '12345', name: 'Produto' }],
+      excluded: [],
+      issues: [],
+      samplesTruncated: false,
+      importedProducts: 1,
+    } satisfies ProductImportResult;
+    productImportServiceMock.import.mockResolvedValue(result);
+
+    await expect(controller.importProducts(file)).resolves.toEqual(result);
+    expect(productImportServiceMock.import).toHaveBeenCalledWith(file);
   });
 
   it('should delegate product update to the service', async () => {

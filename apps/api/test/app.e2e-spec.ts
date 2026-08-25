@@ -42,6 +42,16 @@ interface ProductBody {
   isActive: boolean;
 }
 
+interface ProductImportBody {
+  summary: {
+    totalRows: number;
+    duplicateRows: number;
+    excludedProducts: number;
+    importableProducts: number;
+  };
+  importedProducts?: number;
+}
+
 interface ExpirationBody {
   id: string;
   batchNumber: string | null;
@@ -66,6 +76,7 @@ describe('API (e2e)', () => {
   const storeCodeB = `E2EB${key}`.toUpperCase();
   const productCode = `E2EP${key}`.toUpperCase();
   const updatedProductCode = `E2EU${key}`.toUpperCase();
+  const importedProductCode = Date.now().toString().slice(-10);
   const barcode = `789${Date.now().toString().slice(-10)}`;
   const adminLogin = `e2e.admin.${key}`;
   const userLoginA = `e2e.store.a.${key}`;
@@ -131,7 +142,11 @@ describe('API (e2e)', () => {
         where: { login: { in: [adminLogin, userLoginA, userLoginB] } },
       });
       await prisma.product.deleteMany({
-        where: { code: { in: [productCode, updatedProductCode] } },
+        where: {
+          code: {
+            in: [productCode, updatedProductCode, importedProductCode],
+          },
+        },
       });
       await prisma.store.deleteMany({
         where: { code: { in: [storeCodeA, storeCodeB] } },
@@ -310,6 +325,43 @@ describe('API (e2e)', () => {
       ),
     ).toBe(true);
 
+    const importFile = Buffer.from(
+      [
+        'Quebra 1;Estoque',
+        `${importedProductCode} - Produto importado E2E;2`,
+        `${importedProductCode} - Produto importado E2E;4`,
+        '99999999 - SACOLA OPERACIONAL;1',
+      ].join('\n'),
+      'utf8',
+    );
+    const importPreviewResponse = await request(app.getHttpServer())
+      .post('/products/import/preview')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', importFile, {
+        filename: 'produtos-e2e.csv',
+        contentType: 'text/csv',
+      })
+      .expect(201);
+    const importPreview = importPreviewResponse.body as ProductImportBody;
+    expect(importPreview.summary).toEqual(
+      expect.objectContaining({
+        totalRows: 3,
+        duplicateRows: 1,
+        excludedProducts: 1,
+        importableProducts: 1,
+      }),
+    );
+
+    const importResponse = await request(app.getHttpServer())
+      .post('/products/import')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', importFile, {
+        filename: 'produtos-e2e.csv',
+        contentType: 'text/csv',
+      })
+      .expect(201);
+    expect((importResponse.body as ProductImportBody).importedProducts).toBe(1);
+
     const loginAResponse = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ identifier: userLoginA, password })
@@ -335,6 +387,14 @@ describe('API (e2e)', () => {
       .post('/products')
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ code: `NO${key}`.toUpperCase(), name: 'Sem permissão' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/products/import/preview')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .attach('file', importFile, {
+        filename: 'produtos-e2e.csv',
+        contentType: 'text/csv',
+      })
       .expect(403);
     await request(app.getHttpServer())
       .get('/stores')
