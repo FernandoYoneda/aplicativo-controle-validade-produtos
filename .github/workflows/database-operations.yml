@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - "scripts/**"
+      - "docs/database-backup.md"
       - ".github/workflows/database-operations.yml"
   push:
     branches:
@@ -14,6 +15,7 @@ on:
       - main
     paths:
       - "scripts/**"
+      - "docs/database-backup.md"
       - ".github/workflows/database-operations.yml"
   workflow_dispatch:
 
@@ -34,32 +36,68 @@ jobs:
       - name: Baixar código
         uses: actions/checkout@v7
 
+      - name: Localizar scripts PowerShell
+        shell: pwsh
+        run: |
+          $scripts = Get-ChildItem `
+            -LiteralPath ".\scripts" `
+            -Filter "*.ps1" `
+            -File
+
+          if ($scripts.Count -eq 0) {
+            throw "Nenhum script PowerShell foi encontrado."
+          }
+
+          Write-Host "$($scripts.Count) scripts encontrados."
+
+          foreach ($script in $scripts) {
+            Write-Host "- $($script.FullName)"
+          }
+
       - name: Validar sintaxe dos scripts
         shell: pwsh
         run: |
-          $scripts = @(
-            ".\scripts\backup-database.ps1",
-            ".\scripts\restore-database.ps1"
-          )
+          $scripts = Get-ChildItem `
+            -LiteralPath ".\scripts" `
+            -Filter "*.ps1" `
+            -File
+
+          if ($scripts.Count -eq 0) {
+            throw "Nenhum script PowerShell foi encontrado."
+          }
+
+          $allErrors = @()
 
           foreach ($script in $scripts) {
             $tokens = $null
             $parseErrors = $null
 
             [System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path -LiteralPath $script).Path,
+              $script.FullName,
               [ref]$tokens,
               [ref]$parseErrors
             ) | Out-Null
 
             if ($parseErrors.Count -gt 0) {
-              $messages = $parseErrors |
-                ForEach-Object {
-                  "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)"
-                }
+              foreach ($parseError in $parseErrors) {
+                $allErrors += (
+                  "$($parseError.Extent.File):" +
+                  "$($parseError.Extent.StartLineNumber): " +
+                  "$($parseError.Message)"
+                )
+              }
 
-              throw "Erros encontrados em $script`n$($messages -join "`n")"
+              continue
             }
 
-            Write-Host "Sintaxe aprovada: $script"
+            Write-Host "Sintaxe aprovada: $($script.Name)"
           }
+
+          if ($allErrors.Count -gt 0) {
+            throw (
+              "Erros de sintaxe encontrados:`n" +
+              ($allErrors -join "`n")
+            )
+          }
+
+          Write-Host "Todos os scripts PowerShell foram aprovados."
