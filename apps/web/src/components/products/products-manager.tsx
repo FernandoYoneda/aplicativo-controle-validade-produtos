@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import type { ApiErrorResponse } from "../../types/auth";
-import type { Product } from "../../types/product";
+import type { Product, ProductImportResult } from "../../types/product";
 import { ProductFormModal } from "./product-form-modal";
+import { ProductImportModal } from "./product-import-modal";
 
 interface ProductsManagerProps {
   initialProducts: Product[];
@@ -39,6 +40,7 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
   const [successMessage, setSuccessMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const loadProducts = useCallback(async () => {
@@ -142,6 +144,16 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
     closeForm();
   }
 
+  async function handleProductsImported(result: ProductImportResult) {
+    setIsImportOpen(false);
+    await loadProducts();
+    setSuccessMessage(
+      result.importedProducts === 1
+        ? "1 produto foi cadastrado com sucesso pela planilha."
+        : `${result.importedProducts} produtos foram cadastrados com sucesso pela planilha.`,
+    );
+  }
+
   return (
     <>
       <div className="flex flex-col gap-6">
@@ -202,6 +214,14 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
                 type="button"
               >
                 {isLoading ? "Atualizando..." : "Atualizar lista"}
+              </button>
+
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--casabella-teal)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:bg-[var(--casabella-teal-soft)]"
+                onClick={() => setIsImportOpen(true)}
+                type="button"
+              >
+                Importar planilha
               </button>
 
               <button
@@ -345,6 +365,13 @@ export function ProductsManager({ initialProducts }: ProductsManagerProps) {
           onClose={closeForm}
           onSaved={handleProductSaved}
           product={selectedProduct ?? undefined}
+        />
+      ) : null}
+
+      {isImportOpen ? (
+        <ProductImportModal
+          onClose={() => setIsImportOpen(false)}
+          onImported={handleProductsImported}
         />
       ) : null}
     </>
