@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import type { ExpirationRecord } from "../../types/expiration";
+import type { ExpirationOverview as ExpirationOverviewData } from "../../types/expiration";
 
 interface ExpirationOverviewProps {
-  expirations: ExpirationRecord[];
+  overview: ExpirationOverviewData | null;
   isAdmin: boolean;
   loadError: boolean;
 }
@@ -71,61 +71,56 @@ function getPriorityStatus(daysUntilExpiration: number): {
 }
 
 export function ExpirationOverview({
-  expirations,
+  overview,
   isAdmin,
   loadError,
 }: ExpirationOverviewProps) {
-  const activeExpirations = expirations.filter(
-    (expiration) => expiration.isActive,
-  );
-
-  const expiredCount = activeExpirations.filter(
-    (expiration) => getDaysUntilExpiration(expiration.expirationDate) < 0,
-  ).length;
-
-  const upcomingCount = activeExpirations.filter((expiration) => {
-    const daysUntilExpiration = getDaysUntilExpiration(
-      expiration.expirationDate,
-    );
-
-    return daysUntilExpiration >= 0 && daysUntilExpiration <= 30;
-  }).length;
-
-  const validCount = activeExpirations.filter(
-    (expiration) => getDaysUntilExpiration(expiration.expirationDate) > 30,
-  ).length;
-
-  const priorityExpirations = activeExpirations
-    .filter(
-      (expiration) => getDaysUntilExpiration(expiration.expirationDate) <= 30,
-    )
-    .sort(
-      (firstExpiration, secondExpiration) =>
-        getExpirationTimestamp(firstExpiration.expirationDate) -
-        getExpirationTimestamp(secondExpiration.expirationDate),
-    )
-    .slice(0, 5);
+  const summary = overview?.summary;
+  const priorityExpirations = overview?.priorityItems ?? [];
+  const activeRecords = summary
+    ? summary.totalRecords - summary.inactiveRecords
+    : 0;
 
   const indicators = [
     {
       label: "Registros ativos",
-      value: activeExpirations.length,
+      value: activeRecords,
       valueClassName: "text-[var(--casabella-teal-dark)]",
     },
     {
       label: "Produtos vencidos",
-      value: expiredCount,
+      value: summary?.expiredRecords ?? 0,
       valueClassName: "text-red-700",
     },
     {
       label: "Próximos 30 dias",
-      value: upcomingCount,
+      value: summary?.upcomingRecords ?? 0,
       valueClassName: "text-amber-700",
     },
     {
-      label: "Dentro da validade",
-      value: validCount,
+      label: "De 31 dias a 3 meses",
+      value: summary?.threeMonthRecords ?? 0,
+      valueClassName: "text-yellow-700",
+    },
+    {
+      label: "De 3 a 6 meses",
+      value: summary?.sixMonthRecords ?? 0,
+      valueClassName: "text-lime-700",
+    },
+    {
+      label: "De 6 meses a 1 ano",
+      value: summary?.oneYearRecords ?? 0,
       valueClassName: "text-emerald-700",
+    },
+    {
+      label: "Acima de 1 ano",
+      value: summary?.beyondOneYearRecords ?? 0,
+      valueClassName: "text-emerald-700",
+    },
+    {
+      label: "Registros inativos",
+      value: summary?.inactiveRecords ?? 0,
+      valueClassName: "text-[var(--casabella-coral-dark)]",
     },
   ];
 

@@ -1,5 +1,16 @@
 import type { ExpirationRecord } from './expirations.service';
 
+export interface ExpirationSummary {
+  totalRecords: number;
+  expiredRecords: number;
+  upcomingRecords: number;
+  threeMonthRecords: number;
+  sixMonthRecords: number;
+  oneYearRecords: number;
+  beyondOneYearRecords: number;
+  inactiveRecords: number;
+}
+
 export interface ExpirationPage {
   items: ExpirationRecord[];
   pagination: {
@@ -8,10 +19,10 @@ export interface ExpirationPage {
     totalItems: number;
     totalPages: number;
   };
-  summary: {
-    totalRecords: number;
-    expiredRecords: number;
-    upcomingRecords: number;
-    inactiveRecords: number;
-  };
+  summary: ExpirationSummary;
+}
+
+export interface ExpirationOverview {
+  summary: ExpirationSummary;
+  priorityItems: ExpirationRecord[];
 }

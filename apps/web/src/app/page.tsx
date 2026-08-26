@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
 import { LogoutButton } from "../components/auth/logout-button";
 import { ExpirationOverview } from "../components/dashboard/expiration-overview";
 import { getAuthenticatedUser } from "../lib/auth";
-import { getExpirations } from "../lib/expirations";
+import { getExpirationOverview } from "../lib/expirations";
 import type { AuthenticatedUser } from "../types/auth";
-import type { ExpirationRecord } from "../types/expiration";
+import type { ExpirationOverview as ExpirationOverviewData } from "../types/expiration";
 
 export const metadata: Metadata = {
   title: "Painel do sistema",
@@ -70,16 +70,16 @@ export default async function Home() {
     redirect("/login");
   }
 
-  let expirations: ExpirationRecord[] | null = null;
+  let expirationOverview: ExpirationOverviewData | null = null;
   let expirationLoadError = false;
 
   try {
-    expirations = await getExpirations();
+    expirationOverview = await getExpirationOverview();
   } catch {
     expirationLoadError = true;
   }
 
-  if (!expirationLoadError && !expirations) {
+  if (!expirationLoadError && !expirationOverview) {
     redirect("/login");
   }
 
@@ -158,9 +158,9 @@ export default async function Home() {
         </section>
 
         <ExpirationOverview
-          expirations={expirations ?? []}
           isAdmin={isAdmin}
           loadError={expirationLoadError}
+          overview={expirationOverview}
         />
 
         <section className="mt-9">

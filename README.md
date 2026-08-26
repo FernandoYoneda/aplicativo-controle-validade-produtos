@@ -9,7 +9,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Administrador
 
 - autenticação por login ou e-mail;
-- painel consolidado com indicadores e registros prioritários;
+- painel consolidado com indicadores por período e registros prioritários;
 - cadastro, consulta, atualização, ativação e inativação de lojas;
 - cadastro, consulta, atualização, ativação e inativação de usuários de loja;
 - cadastro, consulta, atualização, ativação e inativação de produtos;
@@ -19,7 +19,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - listagem paginada de validades, com 25 registros por página;
 - pesquisa de validades por produto, código, loja ou lote processada pela API;
 - filtros de situação e de loja, com totais consolidados preservados;
-- acompanhamento de produtos vencidos, próximos do vencimento e dentro da validade.
+- acompanhamento de produtos vencidos, próximos de 30 dias, de 31 dias a 3 meses, de 3 a 6 meses, de 6 meses a 1 ano e acima de 1 ano.
 
 ### Usuário de loja
 
@@ -454,25 +454,26 @@ Acesse http://localhost:3100 e entre com o login e a senha definidos nas variáv
 
 Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 
-| Método  | Rota                | Perfis                          |
-| ------- | ------------------- | ------------------------------- |
-| `GET`   | `/`                 | Público                         |
-| `POST`  | `/auth/login`       | Público                         |
-| `GET`   | `/auth/me`          | Autenticado                     |
-| `GET`   | `/stores`           | Administrador                   |
-| `POST`  | `/stores`           | Administrador                   |
-| `PATCH` | `/stores/:id`       | Administrador                   |
-| `GET`   | `/users`            | Administrador                   |
-| `POST`  | `/users`            | Administrador                   |
-| `PATCH` | `/users/:id`        | Administrador                   |
-| `GET`   | `/products`         | Administrador e usuário de loja |
-| `GET`   | `/products/search`  | Administrador e usuário de loja |
-| `POST`  | `/products`         | Administrador                   |
-| `PATCH` | `/products/:id`     | Administrador                   |
-| `GET`   | `/expirations`      | Administrador e usuário de loja |
-| `GET`   | `/expirations/page` | Administrador e usuário de loja |
-| `POST`  | `/expirations`      | Administrador e usuário de loja |
-| `PATCH` | `/expirations/:id`  | Administrador e usuário de loja |
+| Método  | Rota                    | Perfis                          |
+| ------- | ----------------------- | ------------------------------- |
+| `GET`   | `/`                     | Público                         |
+| `POST`  | `/auth/login`           | Público                         |
+| `GET`   | `/auth/me`              | Autenticado                     |
+| `GET`   | `/stores`               | Administrador                   |
+| `POST`  | `/stores`               | Administrador                   |
+| `PATCH` | `/stores/:id`           | Administrador                   |
+| `GET`   | `/users`                | Administrador                   |
+| `POST`  | `/users`                | Administrador                   |
+| `PATCH` | `/users/:id`            | Administrador                   |
+| `GET`   | `/products`             | Administrador e usuário de loja |
+| `GET`   | `/products/search`      | Administrador e usuário de loja |
+| `POST`  | `/products`             | Administrador                   |
+| `PATCH` | `/products/:id`         | Administrador                   |
+| `GET`   | `/expirations`          | Administrador e usuário de loja |
+| `GET`   | `/expirations/page`     | Administrador e usuário de loja |
+| `GET`   | `/expirations/overview` | Administrador e usuário de loja |
+| `POST`  | `/expirations`          | Administrador e usuário de loja |
+| `PATCH` | `/expirations/:id`      | Administrador e usuário de loja |
 
 Usuários de loja recebem somente os registros da própria unidade e não podem cadastrar ou atualizar validades de outras lojas.
 

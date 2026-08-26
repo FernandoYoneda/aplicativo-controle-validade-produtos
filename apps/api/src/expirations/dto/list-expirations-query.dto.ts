@@ -14,7 +14,10 @@ export enum ExpirationStatusFilter {
   ALL = 'all',
   EXPIRED = 'expired',
   UPCOMING = 'upcoming',
-  VALID = 'valid',
+  THREE_MONTHS = 'threeMonths',
+  SIX_MONTHS = 'sixMonths',
+  ONE_YEAR = 'oneYear',
+  BEYOND_ONE_YEAR = 'beyondOneYear',
   INACTIVE = 'inactive',
 }
 
