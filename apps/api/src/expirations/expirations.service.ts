@@ -14,7 +14,19 @@ import {
   type ListExpirationsQueryDto,
 } from './dto/list-expirations-query.dto';
 import type { UpdateExpirationDto } from './dto/update-expiration.dto';
-import type { ExpirationPage } from './expiration-page.types';
+import type {
+  ExpirationOverview,
+  ExpirationPage,
+  ExpirationSummary,
+} from './expiration-page.types';
+
+interface ExpirationDateLimits {
+  today: Date;
+  upcomingLimit: Date;
+  threeMonthLimit: Date;
+  sixMonthLimit: Date;
+  oneYearLimit: Date;
+}
 
 const expirationSelect = {
   id: true,
@@ -89,7 +101,7 @@ export class ExpirationsService {
     user: AuthenticatedUser,
   ): Promise<ExpirationPage> {
     const accessWhere = this.getAccessWhere(user, query.storeId);
-    const { today, upcomingLimit } = this.getExpirationDateLimits();
+    const dateLimits = this.getExpirationDateLimits();
     const search = query.search?.trim();
     const searchWhere: Prisma.ProductLotWhereInput | undefined = search
       ? {
@@ -134,56 +146,14 @@ export class ExpirationsService {
           ],
         }
       : undefined;
-    const statusWhere = this.getStatusWhere(query.status, today, upcomingLimit);
+    const statusWhere = this.getStatusWhere(query.status, dateLimits);
     const where: Prisma.ProductLotWhereInput = {
       AND: [accessWhere, ...(searchWhere ? [searchWhere] : []), statusWhere],
     };
 
-    const [
-      totalItems,
-      totalRecords,
-      expiredRecords,
-      upcomingRecords,
-      inactiveRecords,
-    ] = await Promise.all([
+    const [totalItems, summary] = await Promise.all([
       this.prisma.productLot.count({ where }),
-      this.prisma.productLot.count({ where: accessWhere }),
-      this.prisma.productLot.count({
-        where: {
-          AND: [
-            accessWhere,
-            this.getStatusWhere(
-              ExpirationStatusFilter.EXPIRED,
-              today,
-              upcomingLimit,
-            ),
-          ],
-        },
-      }),
-      this.prisma.productLot.count({
-        where: {
-          AND: [
-            accessWhere,
-            this.getStatusWhere(
-              ExpirationStatusFilter.UPCOMING,
-              today,
-              upcomingLimit,
-            ),
-          ],
-        },
-      }),
-      this.prisma.productLot.count({
-        where: {
-          AND: [
-            accessWhere,
-            this.getStatusWhere(
-              ExpirationStatusFilter.INACTIVE,
-              today,
-              upcomingLimit,
-            ),
-          ],
-        },
-      }),
+      this.getExpirationSummary(accessWhere, dateLimits),
     ]);
     const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
     const page = Math.min(query.page, totalPages);
@@ -210,13 +180,32 @@ export class ExpirationsService {
         totalItems,
         totalPages,
       },
-      summary: {
-        totalRecords,
-        expiredRecords,
-        upcomingRecords,
-        inactiveRecords,
-      },
+      summary,
     };
+  }
+
+  async findOverview(user: AuthenticatedUser): Promise<ExpirationOverview> {
+    const accessWhere = this.getAccessWhere(user);
+    const dateLimits = this.getExpirationDateLimits();
+    const [summary, priorityItems] = await Promise.all([
+      this.getExpirationSummary(accessWhere, dateLimits),
+      this.prisma.productLot.findMany({
+        where: {
+          AND: [
+            accessWhere,
+            {
+              isActive: true,
+              expirationDate: { lte: dateLimits.upcomingLimit },
+            },
+          ],
+        },
+        select: expirationSelect,
+        orderBy: [{ expirationDate: 'asc' }, { createdAt: 'asc' }],
+        take: 5,
+      }),
+    ]);
+
+    return { summary, priorityItems };
   }
 
   async create(
@@ -393,9 +382,16 @@ export class ExpirationsService {
 
   private getStatusWhere(
     status: ExpirationStatusFilter,
-    today: Date,
-    upcomingLimit: Date,
+    dateLimits: ExpirationDateLimits,
   ): Prisma.ProductLotWhereInput {
+    const {
+      today,
+      upcomingLimit,
+      threeMonthLimit,
+      sixMonthLimit,
+      oneYearLimit,
+    } = dateLimits;
+
     switch (status) {
       case ExpirationStatusFilter.EXPIRED:
         return {
@@ -407,10 +403,25 @@ export class ExpirationsService {
           isActive: true,
           expirationDate: { gte: today, lte: upcomingLimit },
         };
-      case ExpirationStatusFilter.VALID:
+      case ExpirationStatusFilter.THREE_MONTHS:
         return {
           isActive: true,
-          expirationDate: { gt: upcomingLimit },
+          expirationDate: { gt: upcomingLimit, lte: threeMonthLimit },
+        };
+      case ExpirationStatusFilter.SIX_MONTHS:
+        return {
+          isActive: true,
+          expirationDate: { gt: threeMonthLimit, lte: sixMonthLimit },
+        };
+      case ExpirationStatusFilter.ONE_YEAR:
+        return {
+          isActive: true,
+          expirationDate: { gt: sixMonthLimit, lte: oneYearLimit },
+        };
+      case ExpirationStatusFilter.BEYOND_ONE_YEAR:
+        return {
+          isActive: true,
+          expirationDate: { gt: oneYearLimit },
         };
       case ExpirationStatusFilter.INACTIVE:
         return { isActive: false };
@@ -419,7 +430,53 @@ export class ExpirationsService {
     }
   }
 
-  private getExpirationDateLimits(): { today: Date; upcomingLimit: Date } {
+  private getExpirationSummary(
+    accessWhere: Prisma.ProductLotWhereInput,
+    dateLimits: ExpirationDateLimits,
+  ): Promise<ExpirationSummary> {
+    const statuses = [
+      ExpirationStatusFilter.EXPIRED,
+      ExpirationStatusFilter.UPCOMING,
+      ExpirationStatusFilter.THREE_MONTHS,
+      ExpirationStatusFilter.SIX_MONTHS,
+      ExpirationStatusFilter.ONE_YEAR,
+      ExpirationStatusFilter.BEYOND_ONE_YEAR,
+      ExpirationStatusFilter.INACTIVE,
+    ];
+
+    return Promise.all([
+      this.prisma.productLot.count({ where: accessWhere }),
+      ...statuses.map((status) =>
+        this.prisma.productLot.count({
+          where: {
+            AND: [accessWhere, this.getStatusWhere(status, dateLimits)],
+          },
+        }),
+      ),
+    ]).then(
+      ([
+        totalRecords,
+        expiredRecords,
+        upcomingRecords,
+        threeMonthRecords,
+        sixMonthRecords,
+        oneYearRecords,
+        beyondOneYearRecords,
+        inactiveRecords,
+      ]) => ({
+        totalRecords,
+        expiredRecords,
+        upcomingRecords,
+        threeMonthRecords,
+        sixMonthRecords,
+        oneYearRecords,
+        beyondOneYearRecords,
+        inactiveRecords,
+      }),
+    );
+  }
+
+  private getExpirationDateLimits(): ExpirationDateLimits {
     const dateParts = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Sao_Paulo',
       year: 'numeric',
@@ -433,8 +490,20 @@ export class ExpirationsService {
     );
     const upcomingLimit = new Date(today);
     upcomingLimit.setUTCDate(upcomingLimit.getUTCDate() + 30);
+    const threeMonthLimit = new Date(today);
+    threeMonthLimit.setUTCDate(threeMonthLimit.getUTCDate() + 90);
+    const sixMonthLimit = new Date(today);
+    sixMonthLimit.setUTCDate(sixMonthLimit.getUTCDate() + 180);
+    const oneYearLimit = new Date(today);
+    oneYearLimit.setUTCDate(oneYearLimit.getUTCDate() + 365);
 
-    return { today, upcomingLimit };
+    return {
+      today,
+      upcomingLimit,
+      threeMonthLimit,
+      sixMonthLimit,
+      oneYearLimit,
+    };
   }
 
   private requireStoreUserStoreId(user: AuthenticatedUser): string {

@@ -66,6 +66,7 @@ describe('ExpirationsController', () => {
   const expirationsServiceMock = {
     findAll: jest.fn(),
     findPage: jest.fn(),
+    findOverview: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -120,6 +121,10 @@ describe('ExpirationsController', () => {
         totalRecords: 40,
         expiredRecords: 5,
         upcomingRecords: 10,
+        threeMonthRecords: 8,
+        sixMonthRecords: 6,
+        oneYearRecords: 5,
+        beyondOneYearRecords: 4,
         inactiveRecords: 2,
       },
     };
@@ -128,6 +133,28 @@ describe('ExpirationsController', () => {
     await expect(controller.findPage(query, request)).resolves.toEqual(page);
     expect(expirationsServiceMock.findPage).toHaveBeenCalledWith(
       query,
+      authenticatedUser,
+    );
+  });
+
+  it('should delegate expiration overview to the service', async () => {
+    const overview = {
+      summary: {
+        totalRecords: 40,
+        expiredRecords: 5,
+        upcomingRecords: 10,
+        threeMonthRecords: 8,
+        sixMonthRecords: 6,
+        oneYearRecords: 5,
+        beyondOneYearRecords: 4,
+        inactiveRecords: 2,
+      },
+      priorityItems: [expiration],
+    };
+    expirationsServiceMock.findOverview.mockResolvedValue(overview);
+
+    await expect(controller.findOverview(request)).resolves.toEqual(overview);
+    expect(expirationsServiceMock.findOverview).toHaveBeenCalledWith(
       authenticatedUser,
     );
   });

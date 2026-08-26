@@ -174,6 +174,10 @@ describe('ExpirationsService', () => {
       .mockResolvedValueOnce(8)
       .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(2);
     prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
 
@@ -200,6 +204,10 @@ describe('ExpirationsService', () => {
         totalRecords: 8,
         expiredRecords: 1,
         upcomingRecords: 3,
+        threeMonthRecords: 1,
+        sixMonthRecords: 0,
+        oneYearRecords: 0,
+        beyondOneYearRecords: 1,
         inactiveRecords: 2,
       },
     });
@@ -225,6 +233,10 @@ describe('ExpirationsService', () => {
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1)
       .mockResolvedValueOnce(0);
     prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
 
@@ -244,6 +256,74 @@ describe('ExpirationsService', () => {
         },
       },
     });
+  });
+
+  it('should apply a non-overlapping range between three and six months', async () => {
+    prismaServiceMock.productLot.count.mockResolvedValue(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([]);
+
+    await service.findPage(
+      {
+        page: 1,
+        pageSize: 25,
+        status: ExpirationStatusFilter.SIX_MONTHS,
+      },
+      adminUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        AND: [
+          {},
+          {
+            isActive: true,
+            expirationDate: {
+              gt: expect.any(Date) as Date,
+              lte: expect.any(Date) as Date,
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it('should return overview indicators restricted to the user store', async () => {
+    prismaServiceMock.productLot.count
+      .mockResolvedValueOnce(8)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
+
+    await expect(service.findOverview(storeUser)).resolves.toEqual({
+      summary: {
+        totalRecords: 8,
+        expiredRecords: 1,
+        upcomingRecords: 2,
+        threeMonthRecords: 1,
+        sixMonthRecords: 1,
+        oneYearRecords: 1,
+        beyondOneYearRecords: 1,
+        inactiveRecords: 1,
+      },
+      priorityItems: [expiration],
+    });
+
+    expect(prismaServiceMock.productLot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            { storeProduct: { storeId } },
+            expect.objectContaining({ isActive: true }),
+          ],
+        },
+        take: 5,
+      }),
+    );
   });
 
   it('should reject a paginated query for another store by a store user', async () => {

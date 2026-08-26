@@ -87,10 +87,34 @@ function getExpirationStatus(expiration: ExpirationRecord): ExpirationStatus {
     };
   }
 
+  if (daysUntilExpiration <= 90) {
+    return {
+      key: "threeMonths",
+      label: "De 31 dias a 3 meses",
+      className: "bg-yellow-50 text-yellow-800",
+    };
+  }
+
+  if (daysUntilExpiration <= 180) {
+    return {
+      key: "sixMonths",
+      label: "De 3 a 6 meses",
+      className: "bg-lime-50 text-lime-800",
+    };
+  }
+
+  if (daysUntilExpiration <= 365) {
+    return {
+      key: "oneYear",
+      label: "De 6 meses a 1 ano",
+      className: "bg-emerald-50 text-emerald-700",
+    };
+  }
+
   return {
-    key: "valid",
-    label: "Dentro da validade",
-    className: "bg-emerald-50 text-emerald-700",
+    key: "beyondOneYear",
+    label: "Acima de 1 ano",
+    className: "bg-teal-50 text-teal-700",
   };
 }
 
@@ -436,7 +460,10 @@ export function ExpirationsManager({
                 <option value="all">Todas as situações</option>
                 <option value="expired">Vencidos</option>
                 <option value="upcoming">Próximos 30 dias</option>
-                <option value="valid">Dentro da validade</option>
+                <option value="threeMonths">De 31 dias a 3 meses</option>
+                <option value="sixMonths">De 3 a 6 meses</option>
+                <option value="oneYear">De 6 meses a 1 ano</option>
+                <option value="beyondOneYear">Acima de 1 ano</option>
                 <option value="inactive">Inativos</option>
               </select>
             </div>

@@ -18,7 +18,10 @@ import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateExpirationDto } from './dto/create-expiration.dto';
 import { ListExpirationsQueryDto } from './dto/list-expirations-query.dto';
 import { UpdateExpirationDto } from './dto/update-expiration.dto';
-import type { ExpirationPage } from './expiration-page.types';
+import type {
+  ExpirationOverview,
+  ExpirationPage,
+} from './expiration-page.types';
 import {
   type ExpirationRecord,
   ExpirationsService,
@@ -42,6 +45,14 @@ export class ExpirationsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<ExpirationPage> {
     return this.expirationsService.findPage(query, request.user);
+  }
+
+  @Get('overview')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  findOverview(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationOverview> {
+    return this.expirationsService.findOverview(request.user);
   }
 
   @Post()

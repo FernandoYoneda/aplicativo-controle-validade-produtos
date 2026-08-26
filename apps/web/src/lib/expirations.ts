@@ -1,6 +1,10 @@
 import "server-only";
 
-import type { ExpirationPage, ExpirationRecord } from "../types/expiration";
+import type {
+  ExpirationOverview,
+  ExpirationPage,
+  ExpirationRecord,
+} from "../types/expiration";
 import { getAccessToken, getApiUrl } from "./auth";
 
 export async function getExpirations(): Promise<ExpirationRecord[] | null> {
@@ -57,4 +61,32 @@ export async function getExpirationPage(): Promise<ExpirationPage | null> {
   }
 
   return (await response.json()) as ExpirationPage;
+}
+
+export async function getExpirationOverview(): Promise<ExpirationOverview | null> {
+  const accessToken = await getAccessToken();
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const response = await fetch(`${getApiUrl()}/expirations/overview`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Não foi possível consultar os indicadores de validade: ${response.status}.`,
+    );
+  }
+
+  return (await response.json()) as ExpirationOverview;
 }
