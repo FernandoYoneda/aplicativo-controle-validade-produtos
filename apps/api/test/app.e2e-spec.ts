@@ -92,8 +92,17 @@ interface ExpirationPageBody {
     totalRecords: number;
     expiredRecords: number;
     upcomingRecords: number;
+    threeMonthRecords: number;
+    sixMonthRecords: number;
+    oneYearRecords: number;
+    beyondOneYearRecords: number;
     inactiveRecords: number;
   };
+}
+
+interface ExpirationOverviewBody {
+  summary: ExpirationPageBody['summary'];
+  priorityItems: ExpirationBody[];
 }
 
 describe('API (e2e)', () => {
@@ -203,6 +212,7 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/products/search').expect(401);
     await request(app.getHttpServer()).get('/expirations').expect(401);
     await request(app.getHttpServer()).get('/expirations/page').expect(401);
+    await request(app.getHttpServer()).get('/expirations/overview').expect(401);
   });
 
   it('covers the administrator and store-user journeys', async () => {
@@ -591,6 +601,15 @@ describe('API (e2e)', () => {
       }),
     );
     expect(pageA.summary.totalRecords).toBe(2);
+
+    const overviewAResponse = await request(app.getHttpServer())
+      .get('/expirations/overview')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const overviewA = overviewAResponse.body as ExpirationOverviewBody;
+    expect(overviewA.summary.totalRecords).toBe(2);
+    expect(overviewA.summary.beyondOneYearRecords).toBe(2);
+    expect(overviewA.priorityItems).toHaveLength(0);
 
     await request(app.getHttpServer())
       .get('/expirations/page')
