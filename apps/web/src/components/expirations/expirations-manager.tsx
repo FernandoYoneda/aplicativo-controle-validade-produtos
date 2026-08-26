@@ -1,21 +1,25 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiErrorResponse } from "../../types/auth";
-import type { ExpirationRecord } from "../../types/expiration";
+import type {
+  ExpirationPage,
+  ExpirationRecord,
+  ExpirationStatusFilter,
+} from "../../types/expiration";
 import type { Store } from "../../types/store";
 import { ExpirationFormModal } from "./expiration-form-modal";
 
 interface ExpirationsManagerProps {
-  initialExpirations: ExpirationRecord[];
+  initialPage: ExpirationPage;
   stores: Store[];
   isAdmin: boolean;
 }
 
 interface ExpirationStatus {
-  key: "inactive" | "expired" | "upcoming" | "valid";
+  key: Exclude<ExpirationStatusFilter, "all">;
   label: string;
   className: string;
 }
@@ -98,38 +102,32 @@ function formatExpirationDate(value: string): string {
   }).format(new Date(`${dateValue}T00:00:00.000Z`));
 }
 
-function sortExpirations(expirations: ExpirationRecord[]): ExpirationRecord[] {
-  return [...expirations].sort((firstExpiration, secondExpiration) => {
-    const dateComparison =
-      getExpirationTimestamp(firstExpiration.expirationDate) -
-      getExpirationTimestamp(secondExpiration.expirationDate);
+function getVisiblePages(currentPage: number, totalPages: number): number[] {
+  const pages = new Set([1, totalPages]);
 
-    if (dateComparison !== 0) {
-      return dateComparison;
+  for (let page = currentPage - 1; page <= currentPage + 1; page += 1) {
+    if (page >= 1 && page <= totalPages) {
+      pages.add(page);
     }
+  }
 
-    return firstExpiration.storeProduct.product.code.localeCompare(
-      secondExpiration.storeProduct.product.code,
-      "pt-BR",
-      {
-        numeric: true,
-        sensitivity: "base",
-      },
-    );
-  });
+  return [...pages].sort((firstPage, secondPage) => firstPage - secondPage);
 }
 
 export function ExpirationsManager({
-  initialExpirations,
+  initialPage,
   stores,
   isAdmin,
 }: ExpirationsManagerProps) {
   const router = useRouter();
+  const activeRequest = useRef<AbortController | null>(null);
+  const isFirstFilterRender = useRef(true);
 
-  const [expirations, setExpirations] = useState<ExpirationRecord[]>(
-    sortExpirations(initialExpirations),
-  );
+  const [expirationPage, setExpirationPage] = useState(initialPage);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] =
+    useState<ExpirationStatusFilter>("all");
+  const [storeFilter, setStoreFilter] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -137,85 +135,113 @@ export function ExpirationsManager({
   const [selectedExpiration, setSelectedExpiration] =
     useState<ExpirationRecord | null>(null);
 
-  const loadExpirations = useCallback(async () => {
-    setErrorMessage("");
-    setSuccessMessage("");
-    setIsLoading(true);
+  const loadExpirations = useCallback(
+    async (
+      page: number,
+      searchValue: string,
+      status: ExpirationStatusFilter,
+      storeId: string,
+    ) => {
+      activeRequest.current?.abort();
+      const controller = new AbortController();
+      activeRequest.current = controller;
 
-    try {
-      const response = await fetch("/api/expirations", {
-        method: "GET",
-        cache: "no-store",
+      setErrorMessage("");
+      setIsLoading(true);
+
+      const parameters = new URLSearchParams({
+        page: String(page),
+        pageSize: String(expirationPage.pagination.pageSize),
+        status,
       });
+      const normalizedSearch = searchValue.trim();
 
-      if (response.status === 401) {
-        router.replace("/login");
-        router.refresh();
-        return;
+      if (normalizedSearch) {
+        parameters.set("search", normalizedSearch);
       }
 
-      const responseBody = (await response.json()) as
-        ExpirationRecord[] | ApiErrorResponse;
-
-      if (!response.ok) {
-        setErrorMessage(getErrorMessage(responseBody as ApiErrorResponse));
-        return;
+      if (isAdmin && storeId) {
+        parameters.set("storeId", storeId);
       }
 
-      setExpirations(sortExpirations(responseBody as ExpirationRecord[]));
-    } catch {
-      setErrorMessage("Não foi possível conectar ao serviço de validades.");
-    } finally {
-      setIsLoading(false);
+      try {
+        const response = await fetch(`/api/expirations/page?${parameters}`, {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (response.status === 401) {
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
+
+        const responseBody = (await response.json()) as
+          ExpirationPage | ApiErrorResponse;
+
+        if (!response.ok) {
+          setErrorMessage(getErrorMessage(responseBody as ApiErrorResponse));
+          return;
+        }
+
+        setExpirationPage(responseBody as ExpirationPage);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setErrorMessage("Não foi possível conectar ao serviço de validades.");
+      } finally {
+        if (activeRequest.current === controller) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [expirationPage.pagination.pageSize, isAdmin, router],
+  );
+
+  useEffect(() => {
+    if (isFirstFilterRender.current) {
+      isFirstFilterRender.current = false;
+      return;
     }
-  }, [router]);
 
-  const filteredExpirations = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+    const timeout = window.setTimeout(() => {
+      setSuccessMessage("");
+      void loadExpirations(1, search, statusFilter, storeFilter);
+    }, 350);
 
-    if (!normalizedSearch) {
-      return expirations;
-    }
+    return () => window.clearTimeout(timeout);
+  }, [loadExpirations, search, statusFilter, storeFilter]);
 
-    return expirations.filter((expiration) => {
-      const status = getExpirationStatus(expiration);
+  useEffect(
+    () => () => {
+      activeRequest.current?.abort();
+    },
+    [],
+  );
 
-      return [
-        expiration.storeProduct.product.code,
-        expiration.storeProduct.product.barcode ?? "",
-        expiration.storeProduct.product.name,
-        expiration.storeProduct.product.brand ?? "",
-        expiration.storeProduct.product.category ?? "",
-        expiration.storeProduct.store.code,
-        expiration.storeProduct.store.name,
-        expiration.batchNumber ?? "",
-        expiration.notes ?? "",
-        formatExpirationDate(expiration.expirationDate),
-        status.label,
-      ].some((value) => value.toLowerCase().includes(normalizedSearch));
-    });
-  }, [expirations, search]);
-
-  const expiredExpirations = useMemo(
+  const visiblePages = useMemo(
     () =>
-      expirations.filter(
-        (expiration) => getExpirationStatus(expiration).key === "expired",
-      ).length,
-    [expirations],
+      getVisiblePages(
+        expirationPage.pagination.page,
+        expirationPage.pagination.totalPages,
+      ),
+    [expirationPage.pagination.page, expirationPage.pagination.totalPages],
   );
-
-  const upcomingExpirations = useMemo(
-    () =>
-      expirations.filter(
-        (expiration) => getExpirationStatus(expiration).key === "upcoming",
-      ).length,
-    [expirations],
+  const firstVisibleItem =
+    expirationPage.pagination.totalItems === 0
+      ? 0
+      : (expirationPage.pagination.page - 1) *
+          expirationPage.pagination.pageSize +
+        1;
+  const lastVisibleItem = Math.min(
+    expirationPage.pagination.page * expirationPage.pagination.pageSize,
+    expirationPage.pagination.totalItems,
   );
-
-  const inactiveExpirations = useMemo(
-    () => expirations.filter((expiration) => !expiration.isActive).length,
-    [expirations],
-  );
+  const hasActiveFilters =
+    search.trim().length > 0 || statusFilter !== "all" || storeFilter !== "";
 
   function openCreateForm() {
     const hasActiveStores = stores.some((store) => store.isActive);
@@ -244,30 +270,37 @@ export function ExpirationsManager({
     setSelectedExpiration(null);
   }
 
-  function handleExpirationSaved(savedExpiration: ExpirationRecord) {
-    const expirationAlreadyExists = expirations.some(
-      (expiration) => expiration.id === savedExpiration.id,
+  async function handleExpirationSaved(savedExpiration: ExpirationRecord) {
+    const wasEditing = selectedExpiration !== null;
+
+    closeForm();
+    await loadExpirations(
+      wasEditing ? expirationPage.pagination.page : 1,
+      search,
+      statusFilter,
+      storeFilter,
     );
-
-    setExpirations((currentExpirations) => {
-      const updatedExpirations = expirationAlreadyExists
-        ? currentExpirations.map((expiration) =>
-            expiration.id === savedExpiration.id ? savedExpiration : expiration,
-          )
-        : [...currentExpirations, savedExpiration];
-
-      return sortExpirations(updatedExpirations);
-    });
 
     const productCode = savedExpiration.storeProduct.product.code;
 
     setSuccessMessage(
-      expirationAlreadyExists
+      wasEditing
         ? `A validade do produto ${productCode} foi atualizada com sucesso.`
         : `A validade do produto ${productCode} foi cadastrada com sucesso.`,
     );
+  }
 
-    closeForm();
+  function changePage(page: number) {
+    if (
+      page === expirationPage.pagination.page ||
+      page < 1 ||
+      page > expirationPage.pagination.totalPages
+    ) {
+      return;
+    }
+
+    setSuccessMessage("");
+    void loadExpirations(page, search, statusFilter, storeFilter);
   }
 
   return (
@@ -279,7 +312,7 @@ export function ExpirationsManager({
               Total de registros
             </p>
             <p className="mt-2 text-3xl font-bold text-[var(--casabella-teal-dark)]">
-              {isLoading ? "—" : expirations.length}
+              {isLoading ? "—" : expirationPage.summary.totalRecords}
             </p>
           </article>
 
@@ -288,7 +321,7 @@ export function ExpirationsManager({
               Produtos vencidos
             </p>
             <p className="mt-2 text-3xl font-bold text-red-700">
-              {isLoading ? "—" : expiredExpirations}
+              {isLoading ? "—" : expirationPage.summary.expiredRecords}
             </p>
           </article>
 
@@ -297,7 +330,7 @@ export function ExpirationsManager({
               Próximos 30 dias
             </p>
             <p className="mt-2 text-3xl font-bold text-amber-700">
-              {isLoading ? "—" : upcomingExpirations}
+              {isLoading ? "—" : expirationPage.summary.upcomingRecords}
             </p>
           </article>
 
@@ -306,7 +339,7 @@ export function ExpirationsManager({
               Registros inativos
             </p>
             <p className="mt-2 text-3xl font-bold text-[var(--casabella-coral-dark)]">
-              {isLoading ? "—" : inactiveExpirations}
+              {isLoading ? "—" : expirationPage.summary.inactiveRecords}
             </p>
           </article>
         </section>
@@ -335,7 +368,14 @@ export function ExpirationsManager({
               <button
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoading}
-                onClick={() => void loadExpirations()}
+                onClick={() =>
+                  void loadExpirations(
+                    expirationPage.pagination.page,
+                    search,
+                    statusFilter,
+                    storeFilter,
+                  )
+                }
                 type="button"
               >
                 {isLoading ? "Atualizando..." : "Atualizar lista"}
@@ -352,22 +392,80 @@ export function ExpirationsManager({
             </div>
           </div>
 
-          <div className="border-b border-[var(--casabella-border)] p-5">
-            <label
-              className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
-              htmlFor="expiration-search"
-            >
-              Buscar validade
-            </label>
+          <div
+            className={`grid gap-4 border-b border-[var(--casabella-border)] p-5 ${
+              isAdmin
+                ? "lg:grid-cols-[minmax(0,1fr)_220px_240px]"
+                : "lg:grid-cols-[minmax(0,1fr)_240px]"
+            }`}
+          >
+            <div>
+              <label
+                className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
+                htmlFor="expiration-search"
+              >
+                Buscar validade
+              </label>
 
-            <input
-              className="h-11 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm text-[var(--casabella-graphite)] outline-none transition placeholder:text-zinc-400 focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)]"
-              id="expiration-search"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Digite produto, loja, lote, data ou situação"
-              type="search"
-              value={search}
-            />
+              <input
+                className="h-11 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm text-[var(--casabella-graphite)] outline-none transition placeholder:text-zinc-400 focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)]"
+                id="expiration-search"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Digite produto, código, loja ou lote"
+                type="search"
+                value={search}
+              />
+            </div>
+
+            <div>
+              <label
+                className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
+                htmlFor="expiration-status-filter"
+              >
+                Situação
+              </label>
+
+              <select
+                className="h-11 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm text-[var(--casabella-graphite)] outline-none transition focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)]"
+                id="expiration-status-filter"
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as ExpirationStatusFilter)
+                }
+                value={statusFilter}
+              >
+                <option value="all">Todas as situações</option>
+                <option value="expired">Vencidos</option>
+                <option value="upcoming">Próximos 30 dias</option>
+                <option value="valid">Dentro da validade</option>
+                <option value="inactive">Inativos</option>
+              </select>
+            </div>
+
+            {isAdmin ? (
+              <div>
+                <label
+                  className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
+                  htmlFor="expiration-store-filter"
+                >
+                  Loja
+                </label>
+
+                <select
+                  className="h-11 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm text-[var(--casabella-graphite)] outline-none transition focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)]"
+                  id="expiration-store-filter"
+                  onChange={(event) => setStoreFilter(event.target.value)}
+                  value={storeFilter}
+                >
+                  <option value="">Todas as lojas</option>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.code} — {store.name}
+                      {store.isActive ? "" : " (inativa)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
 
           {errorMessage ? (
@@ -385,19 +483,19 @@ export function ExpirationsManager({
             </div>
           ) : null}
 
-          {!isLoading && !errorMessage && filteredExpirations.length === 0 ? (
+          {!isLoading && !errorMessage && expirationPage.items.length === 0 ? (
             <div className="flex min-h-64 flex-col items-center justify-center p-8 text-center">
               <p className="font-semibold text-[var(--casabella-graphite)]">
                 Nenhuma validade encontrada
               </p>
 
               <p className="mt-1 max-w-md text-sm leading-6 text-[var(--casabella-muted)]">
-                {expirations.length === 0
+                {expirationPage.summary.totalRecords === 0
                   ? "Cadastre o primeiro lote para iniciar o controle de validade."
-                  : "Tente buscar por outro produto, loja, lote, data ou situação."}
+                  : "Tente alterar a busca ou os filtros selecionados."}
               </p>
 
-              {expirations.length === 0 ? (
+              {expirationPage.summary.totalRecords === 0 ? (
                 <button
                   className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--casabella-teal-dark)]"
                   onClick={openCreateForm}
@@ -410,80 +508,152 @@ export function ExpirationsManager({
             </div>
           ) : null}
 
-          {!isLoading && !errorMessage && filteredExpirations.length > 0 ? (
-            <div className="divide-y divide-[var(--casabella-border)]">
-              {filteredExpirations.map((expiration) => {
-                const status = getExpirationStatus(expiration);
-                const product = expiration.storeProduct.product;
-                const store = expiration.storeProduct.store;
+          {!isLoading && !errorMessage && expirationPage.items.length > 0 ? (
+            <>
+              <div className="divide-y divide-[var(--casabella-border)]">
+                {expirationPage.items.map((expiration) => {
+                  const status = getExpirationStatus(expiration);
+                  const product = expiration.storeProduct.product;
+                  const store = expiration.storeProduct.store;
 
-                return (
-                  <article
-                    className="grid gap-4 p-5 transition hover:bg-[var(--casabella-background)] lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_140px_100px_145px_76px] lg:items-center"
-                    key={expiration.id}
+                  return (
+                    <article
+                      className="grid gap-4 p-5 transition hover:bg-[var(--casabella-background)] lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_140px_100px_145px_76px] lg:items-center"
+                      key={expiration.id}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                          Produto
+                        </p>
+                        <p className="mt-1 truncate font-semibold text-[var(--casabella-graphite)]">
+                          {product.code} — {product.name}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
+                          {product.category ?? "Sem categoria"}
+                        </p>
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                          Loja
+                        </p>
+                        <p className="mt-1 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
+                          {store.code} — {store.name}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
+                          {expiration.batchNumber
+                            ? `Lote: ${expiration.batchNumber}`
+                            : "Sem lote informado"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                          Validade
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-[var(--casabella-teal-dark)]">
+                          {formatExpirationDate(expiration.expirationDate)}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
+                          Quantidade
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-[var(--casabella-graphite)]">
+                          {expiration.quantity}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`w-fit justify-self-start rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
+                      >
+                        {status.label}
+                      </span>
+
+                      <button
+                        aria-label={`Editar a validade do produto ${product.code}`}
+                        className="inline-flex h-9 w-[76px] items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-0 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)]"
+                        onClick={() => openEditForm(expiration)}
+                        type="button"
+                      >
+                        Editar
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <nav
+                aria-label="Paginação das validades"
+                className="flex flex-col gap-4 border-t border-[var(--casabella-border)] p-5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p className="text-sm text-[var(--casabella-muted)]">
+                  Exibindo {firstVisibleItem}–{lastVisibleItem} de{" "}
+                  {expirationPage.pagination.totalItems} registros
+                  {hasActiveFilters ? " encontrados" : ""}.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={expirationPage.pagination.page === 1 || isLoading}
+                    onClick={() =>
+                      changePage(expirationPage.pagination.page - 1)
+                    }
+                    type="button"
                   >
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                        Produto
-                      </p>
-                      <p className="mt-1 truncate font-semibold text-[var(--casabella-graphite)]">
-                        {product.code} — {product.name}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
-                        {product.category ?? "Sem categoria"}
-                      </p>
+                    Anterior
+                  </button>
+
+                  {visiblePages.map((page, index) => (
+                    <div className="contents" key={page}>
+                      {index > 0 && page - visiblePages[index - 1] > 1 ? (
+                        <span
+                          aria-hidden="true"
+                          className="px-1 text-[var(--casabella-muted)]"
+                        >
+                          …
+                        </span>
+                      ) : null}
+
+                      <button
+                        aria-current={
+                          page === expirationPage.pagination.page
+                            ? "page"
+                            : undefined
+                        }
+                        aria-label={`Ir para a página ${page}`}
+                        className={
+                          page === expirationPage.pagination.page
+                            ? "inline-flex size-9 items-center justify-center rounded-xl bg-[var(--casabella-teal)] text-sm font-bold text-white"
+                            : "inline-flex size-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)]"
+                        }
+                        disabled={isLoading}
+                        onClick={() => changePage(page)}
+                        type="button"
+                      >
+                        {page}
+                      </button>
                     </div>
+                  ))}
 
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                        Loja
-                      </p>
-                      <p className="mt-1 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
-                        {store.code} — {store.name}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
-                        {expiration.batchNumber
-                          ? `Lote: ${expiration.batchNumber}`
-                          : "Sem lote informado"}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                        Validade
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-[var(--casabella-teal-dark)]">
-                        {formatExpirationDate(expiration.expirationDate)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
-                        Quantidade
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-[var(--casabella-graphite)]">
-                        {expiration.quantity}
-                      </p>
-                    </div>
-
-                    <span
-                      className={`w-fit justify-self-start rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
-                    >
-                      {status.label}
-                    </span>
-
-                    <button
-                      aria-label={`Editar a validade do produto ${product.code}`}
-                      className="inline-flex h-9 w-[76px] items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-0 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)]"
-                      onClick={() => openEditForm(expiration)}
-                      type="button"
-                    >
-                      Editar
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
+                  <button
+                    className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={
+                      expirationPage.pagination.page ===
+                        expirationPage.pagination.totalPages || isLoading
+                    }
+                    onClick={() =>
+                      changePage(expirationPage.pagination.page + 1)
+                    }
+                    type="button"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </nav>
+            </>
           ) : null}
         </section>
       </div>

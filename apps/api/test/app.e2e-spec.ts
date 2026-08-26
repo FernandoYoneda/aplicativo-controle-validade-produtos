@@ -80,6 +80,22 @@ interface ExpirationBody {
   };
 }
 
+interface ExpirationPageBody {
+  items: ExpirationBody[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  summary: {
+    totalRecords: number;
+    expiredRecords: number;
+    upcomingRecords: number;
+    inactiveRecords: number;
+  };
+}
+
 describe('API (e2e)', () => {
   jest.setTimeout(60000);
 
@@ -186,6 +202,7 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/products/page').expect(401);
     await request(app.getHttpServer()).get('/products/search').expect(401);
     await request(app.getHttpServer()).get('/expirations').expect(401);
+    await request(app.getHttpServer()).get('/expirations/page').expect(401);
   });
 
   it('covers the administrator and store-user journeys', async () => {
@@ -552,6 +569,35 @@ describe('API (e2e)', () => {
       listA.every(({ storeProduct }) => storeProduct.store.id === storeA.id),
     ).toBe(true);
 
+    const pageAResponse = await request(app.getHttpServer())
+      .get('/expirations/page')
+      .query({
+        page: 1,
+        pageSize: 1,
+        search: 'lote-e2e-admin',
+        status: 'all',
+      })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const pageA = pageAResponse.body as ExpirationPageBody;
+    expect(pageA.items).toHaveLength(1);
+    expect(pageA.items[0]?.id).toBe(expirationA.id);
+    expect(pageA.pagination).toEqual(
+      expect.objectContaining({
+        page: 1,
+        pageSize: 1,
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    );
+    expect(pageA.summary.totalRecords).toBe(2);
+
+    await request(app.getHttpServer())
+      .get('/expirations/page')
+      .query({ storeId: storeB.id })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(403);
+
     const listBResponse = await request(app.getHttpServer())
       .get('/expirations')
       .set('Authorization', `Bearer ${tokenB}`)
@@ -612,6 +658,21 @@ describe('API (e2e)', () => {
     expect(adminList.map(({ id }) => id)).toEqual(
       expect.arrayContaining([expirationA.id, ownA.id, ownB.id]),
     );
+
+    const adminPageResponse = await request(app.getHttpServer())
+      .get('/expirations/page')
+      .query({
+        page: 1,
+        pageSize: 25,
+        search: productCode,
+        status: 'all',
+        storeId: storeB.id,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const adminPage = adminPageResponse.body as ExpirationPageBody;
+    expect(adminPage.items.map(({ id }) => id)).toEqual([ownB.id]);
+    expect(adminPage.summary.totalRecords).toBe(1);
 
     const productUpdateResponse = await request(app.getHttpServer())
       .patch(`/products/${product.id}`)
