@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -15,7 +16,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateExpirationDto } from './dto/create-expiration.dto';
+import { ListExpirationsQueryDto } from './dto/list-expirations-query.dto';
 import { UpdateExpirationDto } from './dto/update-expiration.dto';
+import type { ExpirationPage } from './expiration-page.types';
 import {
   type ExpirationRecord,
   ExpirationsService,
@@ -30,6 +33,15 @@ export class ExpirationsController {
   @Roles(UserRole.ADMIN, UserRole.STORE_USER)
   findAll(@Req() request: AuthenticatedRequest): Promise<ExpirationRecord[]> {
     return this.expirationsService.findAll(request.user);
+  }
+
+  @Get('page')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  findPage(
+    @Query() query: ListExpirationsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationPage> {
+    return this.expirationsService.findPage(query, request.user);
   }
 
   @Post()

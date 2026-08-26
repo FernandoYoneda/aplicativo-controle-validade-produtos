@@ -9,7 +9,12 @@ import { UserRole } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
+import {
+  ExpirationStatusFilter,
+  type ListExpirationsQueryDto,
+} from './dto/list-expirations-query.dto';
 import type { UpdateExpirationDto } from './dto/update-expiration.dto';
+import type { ExpirationPage } from './expiration-page.types';
 
 const expirationSelect = {
   id: true,
@@ -77,6 +82,141 @@ export class ExpirationsService {
         },
       ],
     });
+  }
+
+  async findPage(
+    query: ListExpirationsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationPage> {
+    const accessWhere = this.getAccessWhere(user, query.storeId);
+    const { today, upcomingLimit } = this.getExpirationDateLimits();
+    const search = query.search?.trim();
+    const searchWhere: Prisma.ProductLotWhereInput | undefined = search
+      ? {
+          OR: [
+            { batchNumber: { contains: search, mode: 'insensitive' } },
+            { notes: { contains: search, mode: 'insensitive' } },
+            {
+              storeProduct: {
+                product: {
+                  code: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                product: {
+                  barcode: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                product: {
+                  name: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                store: {
+                  code: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                store: {
+                  name: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+    const statusWhere = this.getStatusWhere(query.status, today, upcomingLimit);
+    const where: Prisma.ProductLotWhereInput = {
+      AND: [accessWhere, ...(searchWhere ? [searchWhere] : []), statusWhere],
+    };
+
+    const [
+      totalItems,
+      totalRecords,
+      expiredRecords,
+      upcomingRecords,
+      inactiveRecords,
+    ] = await Promise.all([
+      this.prisma.productLot.count({ where }),
+      this.prisma.productLot.count({ where: accessWhere }),
+      this.prisma.productLot.count({
+        where: {
+          AND: [
+            accessWhere,
+            this.getStatusWhere(
+              ExpirationStatusFilter.EXPIRED,
+              today,
+              upcomingLimit,
+            ),
+          ],
+        },
+      }),
+      this.prisma.productLot.count({
+        where: {
+          AND: [
+            accessWhere,
+            this.getStatusWhere(
+              ExpirationStatusFilter.UPCOMING,
+              today,
+              upcomingLimit,
+            ),
+          ],
+        },
+      }),
+      this.prisma.productLot.count({
+        where: {
+          AND: [
+            accessWhere,
+            this.getStatusWhere(
+              ExpirationStatusFilter.INACTIVE,
+              today,
+              upcomingLimit,
+            ),
+          ],
+        },
+      }),
+    ]);
+    const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const items = await this.prisma.productLot.findMany({
+      where,
+      select: expirationSelect,
+      orderBy: [
+        {
+          expirationDate: 'asc',
+        },
+        {
+          createdAt: 'asc',
+        },
+      ],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+    });
+
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages,
+      },
+      summary: {
+        totalRecords,
+        expiredRecords,
+        upcomingRecords,
+        inactiveRecords,
+      },
+    };
   }
 
   async create(
@@ -220,6 +360,81 @@ export class ExpirationsService {
     }
 
     return storeId;
+  }
+
+  private getAccessWhere(
+    user: AuthenticatedUser,
+    requestedStoreId?: string,
+  ): Prisma.ProductLotWhereInput {
+    if (user.role === UserRole.ADMIN) {
+      return requestedStoreId
+        ? {
+            storeProduct: {
+              storeId: requestedStoreId,
+            },
+          }
+        : {};
+    }
+
+    const storeId = this.requireStoreUserStoreId(user);
+
+    if (requestedStoreId && requestedStoreId !== storeId) {
+      throw new ForbiddenException(
+        'Você não possui permissão para consultar outra loja.',
+      );
+    }
+
+    return {
+      storeProduct: {
+        storeId,
+      },
+    };
+  }
+
+  private getStatusWhere(
+    status: ExpirationStatusFilter,
+    today: Date,
+    upcomingLimit: Date,
+  ): Prisma.ProductLotWhereInput {
+    switch (status) {
+      case ExpirationStatusFilter.EXPIRED:
+        return {
+          isActive: true,
+          expirationDate: { lt: today },
+        };
+      case ExpirationStatusFilter.UPCOMING:
+        return {
+          isActive: true,
+          expirationDate: { gte: today, lte: upcomingLimit },
+        };
+      case ExpirationStatusFilter.VALID:
+        return {
+          isActive: true,
+          expirationDate: { gt: upcomingLimit },
+        };
+      case ExpirationStatusFilter.INACTIVE:
+        return { isActive: false };
+      case ExpirationStatusFilter.ALL:
+        return {};
+    }
+  }
+
+  private getExpirationDateLimits(): { today: Date; upcomingLimit: Date } {
+    const dateParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const getPart = (type: Intl.DateTimeFormatPartTypes): number =>
+      Number(dateParts.find((part) => part.type === type)?.value);
+    const today = new Date(
+      Date.UTC(getPart('year'), getPart('month') - 1, getPart('day')),
+    );
+    const upcomingLimit = new Date(today);
+    upcomingLimit.setUTCDate(upcomingLimit.getUTCDate() + 30);
+
+    return { today, upcomingLimit };
   }
 
   private requireStoreUserStoreId(user: AuthenticatedUser): string {
