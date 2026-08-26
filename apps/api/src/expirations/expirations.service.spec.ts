@@ -7,6 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExpirationStatusFilter } from './dto/list-expirations-query.dto';
 import {
   type ExpirationRecord,
   ExpirationsService,
@@ -42,6 +43,7 @@ describe('ExpirationsService', () => {
       findFirst: jest.fn(),
     },
     productLot: {
+      count: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -163,6 +165,101 @@ describe('ExpirationsService', () => {
       ForbiddenException,
     );
 
+    expect(prismaServiceMock.productLot.findMany).not.toHaveBeenCalled();
+  });
+
+  it('should return a filtered expiration page and global summary', async () => {
+    prismaServiceMock.productLot.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(8)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
+
+    await expect(
+      service.findPage(
+        {
+          page: 2,
+          pageSize: 1,
+          search: '  PROD001  ',
+          status: ExpirationStatusFilter.UPCOMING,
+          storeId,
+        },
+        adminUser,
+      ),
+    ).resolves.toEqual({
+      items: [expiration],
+      pagination: {
+        page: 2,
+        pageSize: 1,
+        totalItems: 2,
+        totalPages: 2,
+      },
+      summary: {
+        totalRecords: 8,
+        expiredRecords: 1,
+        upcomingRecords: 3,
+        inactiveRecords: 2,
+      },
+    });
+
+    expect(prismaServiceMock.productLot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 1,
+        take: 1,
+      }),
+    );
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(2, {
+      where: {
+        storeProduct: {
+          storeId,
+        },
+      },
+    });
+  });
+
+  it('should keep paginated results restricted to the store user store', async () => {
+    prismaServiceMock.productLot.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
+
+    await service.findPage(
+      {
+        page: 1,
+        pageSize: 25,
+        status: ExpirationStatusFilter.ALL,
+      },
+      storeUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(2, {
+      where: {
+        storeProduct: {
+          storeId,
+        },
+      },
+    });
+  });
+
+  it('should reject a paginated query for another store by a store user', async () => {
+    await expect(
+      service.findPage(
+        {
+          page: 1,
+          pageSize: 25,
+          status: ExpirationStatusFilter.ALL,
+          storeId: otherStoreId,
+        },
+        storeUser,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(prismaServiceMock.productLot.count).not.toHaveBeenCalled();
     expect(prismaServiceMock.productLot.findMany).not.toHaveBeenCalled();
   });
 

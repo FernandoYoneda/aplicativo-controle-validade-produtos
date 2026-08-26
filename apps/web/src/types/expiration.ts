@@ -34,6 +34,25 @@ export interface ExpirationRecord {
   storeProduct: ExpirationStoreProduct;
 }
 
+export type ExpirationStatusFilter =
+  "all" | "expired" | "upcoming" | "valid" | "inactive";
+
+export interface ExpirationPage {
+  items: ExpirationRecord[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  summary: {
+    totalRecords: number;
+    expiredRecords: number;
+    upcomingRecords: number;
+    inactiveRecords: number;
+  };
+}
+
 export interface CreateExpirationPayload {
   productId: string;
   storeId?: string;

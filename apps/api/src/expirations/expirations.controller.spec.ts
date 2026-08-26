@@ -2,6 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
+import {
+  ExpirationStatusFilter,
+  type ListExpirationsQueryDto,
+} from './dto/list-expirations-query.dto';
 import { ExpirationsController } from './expirations.controller';
 import {
   type ExpirationRecord,
@@ -61,6 +65,7 @@ describe('ExpirationsController', () => {
 
   const expirationsServiceMock = {
     findAll: jest.fn(),
+    findPage: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -91,6 +96,38 @@ describe('ExpirationsController', () => {
     await expect(controller.findAll(request)).resolves.toEqual([expiration]);
 
     expect(expirationsServiceMock.findAll).toHaveBeenCalledWith(
+      authenticatedUser,
+    );
+  });
+
+  it('should delegate paginated expiration listing to the service', async () => {
+    const query: ListExpirationsQueryDto = {
+      page: 2,
+      pageSize: 25,
+      search: 'produto',
+      status: ExpirationStatusFilter.UPCOMING,
+      storeId,
+    };
+    const page = {
+      items: [expiration],
+      pagination: {
+        page: 2,
+        pageSize: 25,
+        totalItems: 30,
+        totalPages: 2,
+      },
+      summary: {
+        totalRecords: 40,
+        expiredRecords: 5,
+        upcomingRecords: 10,
+        inactiveRecords: 2,
+      },
+    };
+    expirationsServiceMock.findPage.mockResolvedValue(page);
+
+    await expect(controller.findPage(query, request)).resolves.toEqual(page);
+    expect(expirationsServiceMock.findPage).toHaveBeenCalledWith(
+      query,
       authenticatedUser,
     );
   });

@@ -6,10 +6,10 @@ import { redirect } from "next/navigation";
 import { LogoutButton } from "../../components/auth/logout-button";
 import { ExpirationsManager } from "../../components/expirations/expirations-manager";
 import { getAuthenticatedUser } from "../../lib/auth";
-import { getExpirations } from "../../lib/expirations";
+import { getExpirationPage } from "../../lib/expirations";
 import { getStores } from "../../lib/stores";
 import type { AuthenticatedUser } from "../../types/auth";
-import type { ExpirationRecord } from "../../types/expiration";
+import type { ExpirationPage } from "../../types/expiration";
 import type { Store } from "../../types/store";
 
 export const metadata: Metadata = {
@@ -31,20 +31,20 @@ export default async function ExpirationsPage() {
 
   const isAdmin = user.role === "ADMIN";
 
-  let expirations: ExpirationRecord[] | null = null;
+  let expirationPage: ExpirationPage | null = null;
   let stores: Store[] | null = [];
   let loadError = false;
 
   try {
-    [expirations, stores] = await Promise.all([
-      getExpirations(),
+    [expirationPage, stores] = await Promise.all([
+      getExpirationPage(),
       isAdmin ? getStores() : Promise.resolve([]),
     ]);
   } catch {
     loadError = true;
   }
 
-  if (!loadError && (!expirations || (isAdmin && !stores))) {
+  if (!loadError && (!expirationPage || (isAdmin && !stores))) {
     redirect("/login");
   }
 
@@ -152,7 +152,7 @@ export default async function ExpirationsPage() {
             </div>
           ) : (
             <ExpirationsManager
-              initialExpirations={expirations ?? []}
+              initialPage={expirationPage!}
               isAdmin={isAdmin}
               stores={stores ?? []}
             />

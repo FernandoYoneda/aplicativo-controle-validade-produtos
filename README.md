@@ -16,7 +16,9 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - catálogo administrativo paginado, com busca por código, código de barras, nome, marca ou categoria;
 - importação de produtos por arquivos XLSX, XLS ou CSV com pré-visualização, deduplicação e filtros de materiais não comercializáveis;
 - gerenciamento de lotes, quantidades e datas de validade de todas as lojas;
-- pesquisa por produto, loja, lote, data ou situação;
+- listagem paginada de validades, com 25 registros por página;
+- pesquisa de validades por produto, código, loja ou lote processada pela API;
+- filtros de situação e de loja, com totais consolidados preservados;
 - acompanhamento de produtos vencidos, próximos do vencimento e dentro da validade.
 
 ### Usuário de loja
@@ -24,6 +26,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - autenticação por login ou e-mail;
 - painel com indicadores da própria unidade;
 - consulta e gerenciamento das validades vinculadas à sua loja;
+- listagem paginada com busca e filtros restritos à própria unidade;
 - cadastro de lotes usando automaticamente a loja associada ao usuário;
 - busca rápida de produtos ativos por código, código de barras ou nome durante o cadastro de validade;
 - isolamento de dados entre unidades.
@@ -451,24 +454,25 @@ Acesse http://localhost:3100 e entre com o login e a senha definidos nas variáv
 
 Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 
-| Método  | Rota               | Perfis                          |
-| ------- | ------------------ | ------------------------------- |
-| `GET`   | `/`                | Público                         |
-| `POST`  | `/auth/login`      | Público                         |
-| `GET`   | `/auth/me`         | Autenticado                     |
-| `GET`   | `/stores`          | Administrador                   |
-| `POST`  | `/stores`          | Administrador                   |
-| `PATCH` | `/stores/:id`      | Administrador                   |
-| `GET`   | `/users`           | Administrador                   |
-| `POST`  | `/users`           | Administrador                   |
-| `PATCH` | `/users/:id`       | Administrador                   |
-| `GET`   | `/products`        | Administrador e usuário de loja |
-| `GET`   | `/products/search` | Administrador e usuário de loja |
-| `POST`  | `/products`        | Administrador                   |
-| `PATCH` | `/products/:id`    | Administrador                   |
-| `GET`   | `/expirations`     | Administrador e usuário de loja |
-| `POST`  | `/expirations`     | Administrador e usuário de loja |
-| `PATCH` | `/expirations/:id` | Administrador e usuário de loja |
+| Método  | Rota                | Perfis                          |
+| ------- | ------------------- | ------------------------------- |
+| `GET`   | `/`                 | Público                         |
+| `POST`  | `/auth/login`       | Público                         |
+| `GET`   | `/auth/me`          | Autenticado                     |
+| `GET`   | `/stores`           | Administrador                   |
+| `POST`  | `/stores`           | Administrador                   |
+| `PATCH` | `/stores/:id`       | Administrador                   |
+| `GET`   | `/users`            | Administrador                   |
+| `POST`  | `/users`            | Administrador                   |
+| `PATCH` | `/users/:id`        | Administrador                   |
+| `GET`   | `/products`         | Administrador e usuário de loja |
+| `GET`   | `/products/search`  | Administrador e usuário de loja |
+| `POST`  | `/products`         | Administrador                   |
+| `PATCH` | `/products/:id`     | Administrador                   |
+| `GET`   | `/expirations`      | Administrador e usuário de loja |
+| `GET`   | `/expirations/page` | Administrador e usuário de loja |
+| `POST`  | `/expirations`      | Administrador e usuário de loja |
+| `PATCH` | `/expirations/:id`  | Administrador e usuário de loja |
 
 Usuários de loja recebem somente os registros da própria unidade e não podem cadastrar ou atualizar validades de outras lojas.
 
