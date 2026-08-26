@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { ApiErrorResponse } from "../../types/auth";
 import type {
@@ -15,7 +15,6 @@ import type { Store } from "../../types/store";
 
 interface ExpirationFormModalProps {
   expiration?: ExpirationRecord;
-  products: Product[];
   stores: Store[];
   isAdmin: boolean;
   onClose: () => void;
@@ -60,7 +59,6 @@ function isValidDate(value: string): boolean {
 
 export function ExpirationFormModal({
   expiration,
-  products,
   stores,
   isAdmin,
   onClose,
@@ -68,12 +66,17 @@ export function ExpirationFormModal({
 }: ExpirationFormModalProps) {
   const router = useRouter();
   const isEditing = expiration !== undefined;
-  const activeProducts = products.filter((product) => product.isActive);
   const activeStores = stores.filter((store) => store.isActive);
 
   const [productId, setProductId] = useState(
-    expiration?.storeProduct.product.id ?? activeProducts[0]?.id ?? "",
+    expiration?.storeProduct.product.id ?? "",
   );
+  const [productSearch, setProductSearch] = useState("");
+  const [productResults, setProductResults] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false);
+  const [productSearchError, setProductSearchError] = useState("");
+  const [completedProductSearch, setCompletedProductSearch] = useState("");
   const [storeId, setStoreId] = useState(
     expiration?.storeProduct.store.id ?? activeStores[0]?.id ?? "",
   );
@@ -86,6 +89,69 @@ export function ExpirationFormModal({
   const [isActive, setIsActive] = useState(expiration?.isActive ?? true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const normalizedSearch = productSearch.trim();
+
+    if (isEditing || selectedProduct || normalizedSearch.length < 2) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsSearchingProducts(true);
+      setProductSearchError("");
+
+      try {
+        const parameters = new URLSearchParams({
+          search: normalizedSearch,
+          limit: "20",
+        });
+        const response = await fetch(`/api/products/search?${parameters}`, {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (response.status === 401) {
+          router.replace("/login");
+          router.refresh();
+          return;
+        }
+
+        const responseBody = (await response.json()) as
+          Product[] | ApiErrorResponse;
+
+        if (!response.ok) {
+          setProductResults([]);
+          setProductSearchError(
+            getErrorMessage(responseBody as ApiErrorResponse),
+          );
+          return;
+        }
+
+        setProductResults(responseBody as Product[]);
+        setCompletedProductSearch(normalizedSearch);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        setProductResults([]);
+        setProductSearchError("Não foi possível pesquisar os produtos.");
+        setCompletedProductSearch(normalizedSearch);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearchingProducts(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [isEditing, productSearch, router, selectedProduct]);
 
   function handleClose() {
     if (!isSaving) {
@@ -272,22 +338,100 @@ export function ExpirationFormModal({
                   Produto
                 </label>
 
-                <select
-                  autoFocus
-                  className="h-12 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm text-[var(--casabella-graphite)] outline-none transition focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:bg-zinc-50"
-                  disabled={isSaving}
-                  id="expiration-product"
-                  onChange={(event) => setProductId(event.target.value)}
-                  required
+                <div className="relative">
+                  <input
+                    aria-autocomplete="list"
+                    aria-controls="expiration-product-results"
+                    aria-expanded={productResults.length > 0}
+                    autoComplete="off"
+                    autoFocus
+                    className="h-12 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm text-[var(--casabella-graphite)] outline-none transition placeholder:text-zinc-400 focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:bg-zinc-50"
+                    disabled={isSaving}
+                    id="expiration-product"
+                    onChange={(event) => {
+                      setProductSearch(event.target.value);
+                      setProductId("");
+                      setSelectedProduct(null);
+                      setProductResults([]);
+                      setIsSearchingProducts(false);
+                      setProductSearchError("");
+                      setCompletedProductSearch("");
+                    }}
+                    placeholder="Digite o código ou nome do produto"
+                    role="combobox"
+                    type="search"
+                    value={productSearch}
+                  />
+
+                  {productResults.length > 0 ? (
+                    <div
+                      className="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[var(--casabella-border)] bg-white p-1 shadow-[0_16px_40px_rgba(0,67,77,0.18)]"
+                      id="expiration-product-results"
+                      role="listbox"
+                    >
+                      {productResults.map((product) => (
+                        <button
+                          className="flex w-full flex-col rounded-lg px-3 py-2 text-left transition hover:bg-[var(--casabella-teal-soft)] focus:bg-[var(--casabella-teal-soft)] focus:outline-none"
+                          key={product.id}
+                          onClick={() => {
+                            setProductId(product.id);
+                            setSelectedProduct(product);
+                            setProductSearch(
+                              `${product.code} — ${product.name}`,
+                            );
+                            setProductResults([]);
+                            setCompletedProductSearch("");
+                          }}
+                          onMouseDown={(event) => event.preventDefault()}
+                          aria-selected={product.id === productId}
+                          role="option"
+                          type="button"
+                        >
+                          <span className="text-sm font-semibold text-[var(--casabella-graphite)]">
+                            {product.code} — {product.name}
+                          </span>
+                          {product.barcode ? (
+                            <span className="mt-0.5 text-xs text-[var(--casabella-muted)]">
+                              Código de barras: {product.barcode}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-2 min-h-5 text-xs">
+                  {selectedProduct ? (
+                    <p className="font-semibold text-emerald-700">
+                      Produto selecionado.
+                    </p>
+                  ) : isSearchingProducts ? (
+                    <p className="text-[var(--casabella-muted)]">
+                      Pesquisando produtos...
+                    </p>
+                  ) : productSearchError ? (
+                    <p className="text-red-700">{productSearchError}</p>
+                  ) : completedProductSearch.length >= 2 &&
+                    completedProductSearch === productSearch.trim() &&
+                    productResults.length === 0 ? (
+                    <p className="text-[var(--casabella-muted)]">
+                      Nenhum produto ativo encontrado.
+                    </p>
+                  ) : (
+                    <p className="text-[var(--casabella-muted)]">
+                      Digite pelo menos 2 caracteres para pesquisar.
+                    </p>
+                  )}
+                </div>
+
+                <input
+                  name="productId"
+                  readOnly
+                  tabIndex={-1}
+                  type="hidden"
                   value={productId}
-                >
-                  <option value="">Selecione o produto</option>
-                  {activeProducts.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.code} — {product.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {isAdmin ? (

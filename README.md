@@ -25,6 +25,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - painel com indicadores da própria unidade;
 - consulta e gerenciamento das validades vinculadas à sua loja;
 - cadastro de lotes usando automaticamente a loja associada ao usuário;
+- busca rápida de produtos ativos por código, código de barras ou nome durante o cadastro de validade;
 - isolamento de dados entre unidades.
 
 ### Importação de produtos
@@ -462,6 +463,7 @@ Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 | `POST`  | `/users`           | Administrador                   |
 | `PATCH` | `/users/:id`       | Administrador                   |
 | `GET`   | `/products`        | Administrador e usuário de loja |
+| `GET`   | `/products/search` | Administrador e usuário de loja |
 | `POST`  | `/products`        | Administrador                   |
 | `PATCH` | `/products/:id`    | Administrador                   |
 | `GET`   | `/expirations`     | Administrador e usuário de loja |

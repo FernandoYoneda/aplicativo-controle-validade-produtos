@@ -5,13 +5,11 @@ import { useCallback, useMemo, useState } from "react";
 
 import type { ApiErrorResponse } from "../../types/auth";
 import type { ExpirationRecord } from "../../types/expiration";
-import type { Product } from "../../types/product";
 import type { Store } from "../../types/store";
 import { ExpirationFormModal } from "./expiration-form-modal";
 
 interface ExpirationsManagerProps {
   initialExpirations: ExpirationRecord[];
-  products: Product[];
   stores: Store[];
   isAdmin: boolean;
 }
@@ -123,7 +121,6 @@ function sortExpirations(expirations: ExpirationRecord[]): ExpirationRecord[] {
 
 export function ExpirationsManager({
   initialExpirations,
-  products,
   stores,
   isAdmin,
 }: ExpirationsManagerProps) {
@@ -221,16 +218,10 @@ export function ExpirationsManager({
   );
 
   function openCreateForm() {
-    const hasActiveProducts = products.some((product) => product.isActive);
     const hasActiveStores = stores.some((store) => store.isActive);
 
     setErrorMessage("");
     setSuccessMessage("");
-
-    if (!hasActiveProducts) {
-      setErrorMessage("Nenhum produto ativo está disponível para o cadastro.");
-      return;
-    }
 
     if (isAdmin && !hasActiveStores) {
       setErrorMessage("Nenhuma loja ativa está disponível para o cadastro.");
@@ -503,7 +494,6 @@ export function ExpirationsManager({
           isAdmin={isAdmin}
           onClose={closeForm}
           onSaved={handleExpirationSaved}
-          products={products}
           stores={stores}
         />
       ) : null}
