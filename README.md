@@ -10,6 +10,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 
 - autenticação por login ou e-mail;
 - painel consolidado com indicadores por período e registros prioritários;
+- alerta visual automático para registros vencidos ou próximos do vencimento;
 - cadastro, consulta, atualização, ativação e inativação de lojas;
 - cadastro, consulta, atualização, ativação e inativação de usuários de loja;
 - cadastro, consulta, atualização, ativação e inativação de produtos;
@@ -19,14 +20,17 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - listagem paginada de validades, com 25 registros por página;
 - pesquisa de validades por produto, código, loja ou lote processada pela API;
 - filtros de situação e de loja, com totais consolidados preservados;
+- exportação das validades filtradas para Excel;
 - acompanhamento de produtos vencidos, próximos de 30 dias, de 31 dias a 3 meses, de 3 a 6 meses, de 6 meses a 1 ano e acima de 1 ano.
 
 ### Usuário de loja
 
 - autenticação por login ou e-mail;
 - painel com indicadores da própria unidade;
+- alerta visual de validades vencidas ou próximas do vencimento na própria unidade;
 - consulta e gerenciamento das validades vinculadas à sua loja;
 - listagem paginada com busca e filtros restritos à própria unidade;
+- exportação para Excel restrita aos registros da própria unidade;
 - cadastro de lotes usando automaticamente a loja associada ao usuário;
 - busca rápida de produtos ativos por código, código de barras ou nome durante o cadastro de validade;
 - isolamento de dados entre unidades.
@@ -472,6 +476,7 @@ Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 | `GET`   | `/expirations`          | Administrador e usuário de loja |
 | `GET`   | `/expirations/page`     | Administrador e usuário de loja |
 | `GET`   | `/expirations/overview` | Administrador e usuário de loja |
+| `GET`   | `/expirations/export`   | Administrador e usuário de loja |
 | `POST`  | `/expirations`          | Administrador e usuário de loja |
 | `PATCH` | `/expirations/:id`      | Administrador e usuário de loja |
 
