@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as XLSX from '@e965/xlsx';
 import type { Prisma } from '../../generated/prisma/client';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
@@ -11,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
 import {
   ExpirationStatusFilter,
+  type FilterExpirationsQueryDto,
   type ListExpirationsQueryDto,
 } from './dto/list-expirations-query.dto';
 import type { UpdateExpirationDto } from './dto/update-expiration.dto';
@@ -27,6 +29,14 @@ interface ExpirationDateLimits {
   sixMonthLimit: Date;
   oneYearLimit: Date;
 }
+
+export interface ExpirationExport {
+  buffer: Buffer;
+  fileName: string;
+}
+
+const MAX_EXPORT_ROWS = 50_000;
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const expirationSelect = {
   id: true,
@@ -102,54 +112,7 @@ export class ExpirationsService {
   ): Promise<ExpirationPage> {
     const accessWhere = this.getAccessWhere(user, query.storeId);
     const dateLimits = this.getExpirationDateLimits();
-    const search = query.search?.trim();
-    const searchWhere: Prisma.ProductLotWhereInput | undefined = search
-      ? {
-          OR: [
-            { batchNumber: { contains: search, mode: 'insensitive' } },
-            { notes: { contains: search, mode: 'insensitive' } },
-            {
-              storeProduct: {
-                product: {
-                  code: { contains: search, mode: 'insensitive' },
-                },
-              },
-            },
-            {
-              storeProduct: {
-                product: {
-                  barcode: { contains: search, mode: 'insensitive' },
-                },
-              },
-            },
-            {
-              storeProduct: {
-                product: {
-                  name: { contains: search, mode: 'insensitive' },
-                },
-              },
-            },
-            {
-              storeProduct: {
-                store: {
-                  code: { contains: search, mode: 'insensitive' },
-                },
-              },
-            },
-            {
-              storeProduct: {
-                store: {
-                  name: { contains: search, mode: 'insensitive' },
-                },
-              },
-            },
-          ],
-        }
-      : undefined;
-    const statusWhere = this.getStatusWhere(query.status, dateLimits);
-    const where: Prisma.ProductLotWhereInput = {
-      AND: [accessWhere, ...(searchWhere ? [searchWhere] : []), statusWhere],
-    };
+    const where = this.getFilteredWhere(query, accessWhere, dateLimits);
 
     const [totalItems, summary] = await Promise.all([
       this.prisma.productLot.count({ where }),
@@ -206,6 +169,95 @@ export class ExpirationsService {
     ]);
 
     return { summary, priorityItems };
+  }
+
+  async exportSpreadsheet(
+    query: FilterExpirationsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationExport> {
+    const accessWhere = this.getAccessWhere(user, query.storeId);
+    const dateLimits = this.getExpirationDateLimits();
+    const where = this.getFilteredWhere(query, accessWhere, dateLimits);
+    const expirations = await this.prisma.productLot.findMany({
+      where,
+      select: expirationSelect,
+      orderBy: [{ expirationDate: 'asc' }, { createdAt: 'asc' }],
+      take: MAX_EXPORT_ROWS + 1,
+    });
+
+    if (expirations.length > MAX_EXPORT_ROWS) {
+      throw new BadRequestException(
+        `A exportação está limitada a ${MAX_EXPORT_ROWS.toLocaleString('pt-BR')} registros. Refine os filtros e tente novamente.`,
+      );
+    }
+
+    const rows: Array<Array<string | number | Date>> = [
+      [
+        'Código do produto',
+        'Código de barras',
+        'Produto',
+        'Loja',
+        'Lote',
+        'Data de validade',
+        'Dias restantes',
+        'Situação',
+        'Quantidade',
+        'Status',
+        'Observações',
+      ],
+      ...expirations.map((expiration) => {
+        const product = expiration.storeProduct.product;
+        const store = expiration.storeProduct.store;
+        const daysUntilExpiration = Math.round(
+          (expiration.expirationDate.getTime() - dateLimits.today.getTime()) /
+            MILLISECONDS_PER_DAY,
+        );
+
+        return [
+          product.code,
+          product.barcode ?? '',
+          product.name,
+          `${store.code} — ${store.name}`,
+          expiration.batchNumber ?? '',
+          this.getSpreadsheetDate(expiration.expirationDate),
+          daysUntilExpiration,
+          this.getStatusLabel(expiration, daysUntilExpiration),
+          expiration.quantity,
+          expiration.isActive ? 'Ativo' : 'Inativo',
+          expiration.notes ?? '',
+        ];
+      }),
+    ];
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(rows, {
+      cellDates: true,
+      dateNF: 'dd/mm/yyyy',
+    });
+    worksheet['!autofilter'] = { ref: worksheet['!ref'] ?? 'A1:K1' };
+    worksheet['!cols'] = [
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 42 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 26 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 42 },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Validades');
+
+    return {
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+        cellDates: true,
+      }) as Buffer,
+      fileName: `validades-${this.getSaoPauloDateStamp()}.xlsx`,
+    };
   }
 
   async create(
@@ -380,6 +432,65 @@ export class ExpirationsService {
     };
   }
 
+  private getFilteredWhere(
+    query: FilterExpirationsQueryDto,
+    accessWhere: Prisma.ProductLotWhereInput,
+    dateLimits: ExpirationDateLimits,
+  ): Prisma.ProductLotWhereInput {
+    const search = query.search?.trim();
+    const searchWhere: Prisma.ProductLotWhereInput | undefined = search
+      ? {
+          OR: [
+            { batchNumber: { contains: search, mode: 'insensitive' } },
+            { notes: { contains: search, mode: 'insensitive' } },
+            {
+              storeProduct: {
+                product: {
+                  code: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                product: {
+                  barcode: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                product: {
+                  name: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                store: {
+                  code: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+            {
+              storeProduct: {
+                store: {
+                  name: { contains: search, mode: 'insensitive' },
+                },
+              },
+            },
+          ],
+        }
+      : undefined;
+
+    return {
+      AND: [
+        accessWhere,
+        ...(searchWhere ? [searchWhere] : []),
+        this.getStatusWhere(query.status, dateLimits),
+      ],
+    };
+  }
+
   private getStatusWhere(
     status: ExpirationStatusFilter,
     dateLimits: ExpirationDateLimits,
@@ -428,6 +539,62 @@ export class ExpirationsService {
       case ExpirationStatusFilter.ALL:
         return {};
     }
+  }
+
+  private getStatusLabel(
+    expiration: ExpirationRecord,
+    daysUntilExpiration: number,
+  ): string {
+    if (!expiration.isActive) {
+      return 'Inativo';
+    }
+
+    if (daysUntilExpiration < 0) {
+      return 'Vencido';
+    }
+
+    if (daysUntilExpiration <= 30) {
+      return 'Próximos 30 dias';
+    }
+
+    if (daysUntilExpiration <= 90) {
+      return 'De 31 dias a 3 meses';
+    }
+
+    if (daysUntilExpiration <= 180) {
+      return 'De 3 a 6 meses';
+    }
+
+    if (daysUntilExpiration <= 365) {
+      return 'De 6 meses a 1 ano';
+    }
+
+    return 'Acima de 1 ano';
+  }
+
+  private getSpreadsheetDate(expirationDate: Date): Date {
+    return new Date(
+      expirationDate.getUTCFullYear(),
+      expirationDate.getUTCMonth(),
+      expirationDate.getUTCDate(),
+    );
+  }
+
+  private getSaoPauloDateStamp(): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const value = (type: Intl.DateTimeFormatPartTypes): string =>
+      parts.find((part) => part.type === type)?.value ?? '00';
+
+    return `${value('year')}${value('month')}${value('day')}-${value('hour')}${value('minute')}${value('second')}`;
   }
 
   private getExpirationSummary(

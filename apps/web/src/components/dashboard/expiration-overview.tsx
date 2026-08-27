@@ -80,6 +80,9 @@ export function ExpirationOverview({
   const activeRecords = summary
     ? summary.totalRecords - summary.inactiveRecords
     : 0;
+  const expiredRecords = summary?.expiredRecords ?? 0;
+  const upcomingRecords = summary?.upcomingRecords ?? 0;
+  const alertRecords = expiredRecords + upcomingRecords;
 
   const indicators = [
     {
@@ -169,6 +172,53 @@ export function ExpirationOverview({
         </div>
       ) : (
         <>
+          {alertRecords > 0 ? (
+            <div
+              className={`mt-5 flex flex-col gap-4 rounded-2xl border px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
+                expiredRecords > 0
+                  ? "border-red-200 bg-red-50"
+                  : "border-amber-200 bg-amber-50"
+              }`}
+              role="alert"
+            >
+              <div>
+                <p
+                  className={`font-bold ${
+                    expiredRecords > 0 ? "text-red-800" : "text-amber-800"
+                  }`}
+                >
+                  Alerta de validade
+                </p>
+
+                <p
+                  className={`mt-1 text-sm ${
+                    expiredRecords > 0 ? "text-red-700" : "text-amber-700"
+                  }`}
+                >
+                  {expiredRecords > 0
+                    ? `${expiredRecords} ${expiredRecords === 1 ? "registro está vencido" : "registros estão vencidos"}`
+                    : "Nenhum registro vencido"}
+                  {" e "}
+                  {upcomingRecords}{" "}
+                  {upcomingRecords === 1
+                    ? "vence nos próximos 30 dias."
+                    : "vencem nos próximos 30 dias."}
+                </p>
+              </div>
+
+              <Link
+                className={`inline-flex h-10 shrink-0 items-center justify-center rounded-xl px-4 text-sm font-semibold text-white transition ${
+                  expiredRecords > 0
+                    ? "bg-red-700 hover:bg-red-800"
+                    : "bg-amber-700 hover:bg-amber-800"
+                }`}
+                href="/expirations"
+              >
+                Ver validades
+              </Link>
+            </div>
+          ) : null}
+
           <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {indicators.map((indicator) => (
               <article
