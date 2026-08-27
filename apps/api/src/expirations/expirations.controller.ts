@@ -8,15 +8,21 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { UserRole } from '../../generated/prisma/enums';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateExpirationDto } from './dto/create-expiration.dto';
-import { ListExpirationsQueryDto } from './dto/list-expirations-query.dto';
+import {
+  FilterExpirationsQueryDto,
+  ListExpirationsQueryDto,
+} from './dto/list-expirations-query.dto';
 import { UpdateExpirationDto } from './dto/update-expiration.dto';
 import type {
   ExpirationOverview,
@@ -53,6 +59,27 @@ export class ExpirationsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<ExpirationOverview> {
     return this.expirationsService.findOverview(request.user);
+  }
+
+  @Get('export')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  async exportSpreadsheet(
+    @Query() query: FilterExpirationsQueryDto,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const report = await this.expirationsService.exportSpreadsheet(
+      query,
+      request.user,
+    );
+    response.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${report.fileName}"`,
+      'Content-Length': String(report.buffer.length),
+    });
+
+    return new StreamableFile(report.buffer);
   }
 
   @Post()

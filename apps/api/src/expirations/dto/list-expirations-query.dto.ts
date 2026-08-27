@@ -21,18 +21,7 @@ export enum ExpirationStatusFilter {
   INACTIVE = 'inactive',
 }
 
-export class ListExpirationsQueryDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page = 1;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  pageSize = 25;
-
+export class FilterExpirationsQueryDto {
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
@@ -47,4 +36,17 @@ export class ListExpirationsQueryDto {
   @IsOptional()
   @IsUUID()
   storeId?: string;
+}
+
+export class ListExpirationsQueryDto extends FilterExpirationsQueryDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 25;
 }

@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import * as XLSX from '@e965/xlsx';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -324,6 +325,85 @@ describe('ExpirationsService', () => {
         take: 5,
       }),
     );
+  });
+
+  it('should export a filtered spreadsheet restricted to the user store', async () => {
+    prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
+
+    const report = await service.exportSpreadsheet(
+      {
+        search: '  PROD001  ',
+        status: ExpirationStatusFilter.ALL,
+      },
+      storeUser,
+    );
+
+    expect(prismaServiceMock.productLot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            { storeProduct: { storeId } },
+            expect.objectContaining({ OR: expect.any(Array) as unknown[] }),
+            {},
+          ],
+        },
+        take: 50_001,
+      }),
+    );
+    expect(report.fileName).toMatch(/^validades-\d{8}-\d{6}\.xlsx$/);
+
+    const workbook = XLSX.read(report.buffer, {
+      type: 'buffer',
+      cellDates: true,
+    });
+    const worksheet = workbook.Sheets.Validades;
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      raw: true,
+    });
+    const formattedRows = XLSX.utils.sheet_to_json<string[]>(worksheet, {
+      header: 1,
+      raw: false,
+      dateNF: 'dd/mm/yyyy',
+    });
+
+    expect(rows[0]).toEqual([
+      'Código do produto',
+      'Código de barras',
+      'Produto',
+      'Loja',
+      'Lote',
+      'Data de validade',
+      'Dias restantes',
+      'Situação',
+      'Quantidade',
+      'Status',
+      'Observações',
+    ]);
+    expect(rows[1]?.slice(0, 5)).toEqual([
+      'PROD001',
+      '7891234567890',
+      'Produto de teste',
+      'LJ001 — Loja 01',
+      'LOTE-001',
+    ]);
+    expect(rows[1]?.[8]).toBe(10);
+    expect(rows[1]?.[9]).toBe('Ativo');
+    expect(formattedRows[1]?.[5]).toBe('31/12/2026');
+    expect(worksheet['!autofilter']).toEqual({ ref: 'A1:K2' });
+  });
+
+  it('should reject spreadsheet exports above the row limit', async () => {
+    prismaServiceMock.productLot.findMany.mockResolvedValue(
+      Array.from({ length: 50_001 }, () => expiration),
+    );
+
+    await expect(
+      service.exportSpreadsheet(
+        { status: ExpirationStatusFilter.ALL },
+        adminUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('should reject a paginated query for another store by a store user', async () => {

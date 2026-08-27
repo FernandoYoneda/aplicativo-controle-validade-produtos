@@ -213,6 +213,7 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/expirations').expect(401);
     await request(app.getHttpServer()).get('/expirations/page').expect(401);
     await request(app.getHttpServer()).get('/expirations/overview').expect(401);
+    await request(app.getHttpServer()).get('/expirations/export').expect(401);
   });
 
   it('covers the administrator and store-user journeys', async () => {
@@ -611,8 +612,35 @@ describe('API (e2e)', () => {
     expect(overviewA.summary.beyondOneYearRecords).toBe(2);
     expect(overviewA.priorityItems).toHaveLength(0);
 
+    const exportAResponse = await request(app.getHttpServer())
+      .get('/expirations/export')
+      .query({ search: 'lote-e2e-admin', status: 'all' })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200)
+      .expect(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    expect(exportAResponse.headers['content-disposition']).toMatch(
+      /^attachment; filename="validades-\d{8}-\d{6}\.xlsx"$/,
+    );
+    expect(Buffer.isBuffer(exportAResponse.body)).toBe(true);
+    expect((exportAResponse.body as Buffer).length).toBeGreaterThan(0);
+
     await request(app.getHttpServer())
       .get('/expirations/page')
+      .query({ storeId: storeB.id })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get('/expirations/export')
       .query({ storeId: storeB.id })
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(403);

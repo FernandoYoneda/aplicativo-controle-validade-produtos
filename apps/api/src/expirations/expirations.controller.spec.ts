@@ -1,3 +1,4 @@
+import { StreamableFile } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '../../generated/prisma/enums';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
@@ -67,6 +68,7 @@ describe('ExpirationsController', () => {
     findAll: jest.fn(),
     findPage: jest.fn(),
     findOverview: jest.fn(),
+    exportSpreadsheet: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -156,6 +158,38 @@ describe('ExpirationsController', () => {
     await expect(controller.findOverview(request)).resolves.toEqual(overview);
     expect(expirationsServiceMock.findOverview).toHaveBeenCalledWith(
       authenticatedUser,
+    );
+  });
+
+  it('should return the filtered expiration spreadsheet', async () => {
+    const query = {
+      search: 'produto',
+      status: ExpirationStatusFilter.UPCOMING,
+      storeId,
+    };
+    const report = {
+      buffer: Buffer.from('planilha'),
+      fileName: 'validades-20260827-120000.xlsx',
+    };
+    const response = { set: jest.fn() };
+    expirationsServiceMock.exportSpreadsheet.mockResolvedValue(report);
+
+    const result = await controller.exportSpreadsheet(
+      query,
+      request,
+      response as never,
+    );
+
+    expect(result).toBeInstanceOf(StreamableFile);
+    expect(expirationsServiceMock.exportSpreadsheet).toHaveBeenCalledWith(
+      query,
+      authenticatedUser,
+    );
+    expect(response.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'Content-Disposition': `attachment; filename="${report.fileName}"`,
+        'Content-Length': String(report.buffer.length),
+      }),
     );
   });
 

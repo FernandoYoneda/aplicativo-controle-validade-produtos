@@ -155,6 +155,7 @@ export function ExpirationsManager({
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedExpiration, setSelectedExpiration] =
     useState<ExpirationRecord | null>(null);
@@ -327,6 +328,60 @@ export function ExpirationsManager({
     void loadExpirations(page, search, statusFilter, storeFilter);
   }
 
+  async function exportExpirations() {
+    const parameters = new URLSearchParams({ status: statusFilter });
+    const normalizedSearch = search.trim();
+
+    if (normalizedSearch) {
+      parameters.set("search", normalizedSearch);
+    }
+
+    if (isAdmin && storeFilter) {
+      parameters.set("storeId", storeFilter);
+    }
+
+    setErrorMessage("");
+    setSuccessMessage("");
+    setIsExporting(true);
+
+    try {
+      const response = await fetch(`/api/expirations/export?${parameters}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (response.status === 401) {
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
+
+      if (!response.ok) {
+        const errorResponse = (await response.json()) as ApiErrorResponse;
+        setErrorMessage(getErrorMessage(errorResponse));
+        return;
+      }
+
+      const contentDisposition = response.headers.get("content-disposition");
+      const fileName =
+        contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] ??
+        "validades.xlsx";
+      const downloadUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+      setSuccessMessage("Planilha de validades exportada com sucesso.");
+    } catch {
+      setErrorMessage("Não foi possível exportar a planilha de validades.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <>
       <div className="flex flex-col gap-6">
@@ -389,6 +444,15 @@ export function ExpirationsManager({
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:border-emerald-400 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isLoading || isExporting}
+                onClick={() => void exportExpirations()}
+                type="button"
+              >
+                {isExporting ? "Exportando..." : "Exportar Excel"}
+              </button>
+
               <button
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoading}
