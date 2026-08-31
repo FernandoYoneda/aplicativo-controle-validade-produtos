@@ -819,6 +819,22 @@ describe('API (e2e)', () => {
       }),
     );
 
+    const fullWriteOffResponse = await request(app.getHttpServer())
+      .post(`/expirations/${ownA.id}/write-off`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ quantity: 3, reason: 'SOLD', notes: 'Baixa total E2E' })
+      .expect(201);
+    const fullWriteOff = fullWriteOffResponse.body as ExpirationWriteOffBody;
+    expect(fullWriteOff.expiration.quantity).toBe(0);
+    expect(fullWriteOff.expiration.isActive).toBe(false);
+    expect(fullWriteOff.writeOff).toEqual(
+      expect.objectContaining({
+        quantity: 3,
+        previousQuantity: 3,
+        remainingQuantity: 0,
+      }),
+    );
+
     const userUpdateResponse = await request(app.getHttpServer())
       .patch(`/users/${userA.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
