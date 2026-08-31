@@ -87,3 +87,38 @@ export interface UpdateExpirationPayload {
   notes?: string | null;
   isActive?: boolean;
 }
+
+export type ExpirationWriteOffReason = "SOLD" | "EXPIRED" | "DISCARDED";
+
+export interface ExpirationWriteOffRecord {
+  id: string;
+  reason: ExpirationWriteOffReason;
+  quantity: number;
+  previousQuantity: number;
+  remainingQuantity: number;
+  notes: string | null;
+  createdAt: string;
+  performedBy: {
+    id: string;
+    name: string;
+    email: string;
+    role: "ADMIN" | "STORE_USER";
+  };
+  productLot: Pick<
+    ExpirationRecord,
+    "id" | "batchNumber" | "expirationDate" | "quantity" | "isActive"
+  > & {
+    storeProduct: Pick<ExpirationStoreProduct, "store" | "product">;
+  };
+}
+
+export interface CreateWriteOffPayload {
+  quantity: number;
+  reason: ExpirationWriteOffReason;
+  notes?: string;
+}
+
+export interface ExpirationWriteOffResult {
+  expiration: ExpirationRecord;
+  writeOff: ExpirationWriteOffRecord;
+}
