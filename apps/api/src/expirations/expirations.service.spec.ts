@@ -197,6 +197,39 @@ describe('ExpirationsService', () => {
     );
   });
 
+  it('should find write-off candidates by the code embedded in a valid EAN-13', async () => {
+    prismaServiceMock.productLot.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([expiration]);
+
+    await expect(
+      service.searchWriteOffCandidates(
+        { query: '7891033859474', limit: 20 },
+        storeUser,
+      ),
+    ).resolves.toEqual([expiration]);
+
+    expect(prismaServiceMock.productLot.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          AND: [
+            expect.any(Object),
+            {
+              storeProduct: {
+                product: {
+                  code: '85947',
+                },
+              },
+            },
+          ],
+        },
+        orderBy: [{ expirationDate: 'asc' }, { createdAt: 'asc' }],
+        take: 20,
+      }),
+    );
+  });
+
   it('should register a partial sale and keep the lot active', async () => {
     transactionMock.productLot.findUnique.mockResolvedValue(expiration);
     transactionMock.productLot.update.mockResolvedValue({
