@@ -161,6 +161,42 @@ describe('ProductsService', () => {
     expect(prismaServiceMock.product.findMany).not.toHaveBeenCalled();
   });
 
+  it('should find an active product by the code embedded in a valid EAN-13', async () => {
+    const boticarioProduct: Product = {
+      ...product,
+      code: '85947',
+      barcode: null,
+    };
+    prismaServiceMock.product.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([boticarioProduct]);
+
+    await expect(
+      service.searchActive({ search: '7891033859474', limit: 20 }),
+    ).resolves.toEqual([boticarioProduct]);
+
+    expect(prismaServiceMock.product.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        isActive: true,
+        OR: [{ code: '7891033859474' }, { barcode: '7891033859474' }],
+      },
+      orderBy: {
+        code: 'asc',
+      },
+      take: 20,
+    });
+    expect(prismaServiceMock.product.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        isActive: true,
+        code: '85947',
+      },
+      orderBy: {
+        code: 'asc',
+      },
+      take: 20,
+    });
+  });
+
   it('should create a product when code and barcode are available', async () => {
     prismaServiceMock.product.findUnique
       .mockResolvedValueOnce(null)

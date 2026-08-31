@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto';
 import type { SearchProductsQueryDto } from './dto/search-products-query.dto';
+import { extractEmbeddedProductCodeFromEan13 } from './product-code-matching';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import type { ProductPage } from './product-page.types';
 
@@ -74,11 +75,45 @@ export class ProductsService {
     };
   }
 
-  searchActive(query: SearchProductsQueryDto): Promise<Product[]> {
+  async searchActive(query: SearchProductsQueryDto): Promise<Product[]> {
     const search = query.search.trim();
 
     if (!search) {
-      return Promise.resolve([]);
+      return [];
+    }
+
+    const embeddedProductCode = extractEmbeddedProductCodeFromEan13(search);
+
+    if (embeddedProductCode) {
+      const exactMatches = await this.prisma.product.findMany({
+        where: {
+          isActive: true,
+          OR: [{ code: search }, { barcode: search }],
+        },
+        orderBy: {
+          code: 'asc',
+        },
+        take: query.limit,
+      });
+
+      if (exactMatches.length > 0) {
+        return exactMatches;
+      }
+
+      const embeddedCodeMatches = await this.prisma.product.findMany({
+        where: {
+          isActive: true,
+          code: embeddedProductCode,
+        },
+        orderBy: {
+          code: 'asc',
+        },
+        take: query.limit,
+      });
+
+      if (embeddedCodeMatches.length > 0) {
+        return embeddedCodeMatches;
+      }
     }
 
     return this.prisma.product.findMany({

@@ -43,6 +43,8 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 
 O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e envia `Enter`; o sistema localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO).
 
+Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, a busca valida o dígito verificador e também procura pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
+
 A operação aceita quantidades parciais e os motivos `Vendido`, `Vencido` e `Descartado`. Quando o saldo chega a zero, o lote é inativado automaticamente e deixa de aparecer nos alertas ativos. Todas as baixas permanecem no histórico com data, usuário responsável, quantidade anterior e saldo restante.
 
 ### Importação de produtos
