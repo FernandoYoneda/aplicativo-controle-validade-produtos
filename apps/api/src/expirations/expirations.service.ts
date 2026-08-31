@@ -13,6 +13,7 @@ import {
 } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { extractEmbeddedProductCodeFromEan13 } from '../products/product-code-matching';
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
 import type { CreateWriteOffDto } from './dto/create-write-off.dto';
 import {
@@ -317,6 +318,34 @@ export class ExpirationsService {
 
     if (exactMatches.length > 0) {
       return exactMatches;
+    }
+
+    const embeddedProductCode = extractEmbeddedProductCodeFromEan13(
+      query.query,
+    );
+
+    if (embeddedProductCode) {
+      const embeddedCodeMatches = await this.prisma.productLot.findMany({
+        where: {
+          AND: [
+            availableWhere,
+            {
+              storeProduct: {
+                product: {
+                  code: embeddedProductCode,
+                },
+              },
+            },
+          ],
+        },
+        select: expirationSelect,
+        orderBy,
+        take: query.limit,
+      });
+
+      if (embeddedCodeMatches.length > 0) {
+        return embeddedCodeMatches;
+      }
     }
 
     return this.prisma.productLot.findMany({
