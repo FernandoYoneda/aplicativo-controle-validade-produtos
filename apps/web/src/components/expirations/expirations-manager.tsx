@@ -8,9 +8,11 @@ import type {
   ExpirationPage,
   ExpirationRecord,
   ExpirationStatusFilter,
+  ExpirationWriteOffResult,
 } from "../../types/expiration";
 import type { Store } from "../../types/store";
 import { ExpirationFormModal } from "./expiration-form-modal";
+import { ExpirationWriteOffModal } from "./expiration-write-off-modal";
 
 interface ExpirationsManagerProps {
   initialPage: ExpirationPage;
@@ -157,6 +159,7 @@ export function ExpirationsManager({
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isWriteOffOpen, setIsWriteOffOpen] = useState(false);
   const [selectedExpiration, setSelectedExpiration] =
     useState<ExpirationRecord | null>(null);
 
@@ -315,6 +318,23 @@ export function ExpirationsManager({
     );
   }
 
+  function handleWriteOffSaved(result: ExpirationWriteOffResult) {
+    const productCode = result.expiration.storeProduct.product.code;
+    const remainingQuantity = result.expiration.quantity;
+
+    void loadExpirations(
+      expirationPage.pagination.page,
+      search,
+      statusFilter,
+      storeFilter,
+    );
+    setSuccessMessage(
+      remainingQuantity === 0
+        ? `Baixa registrada para ${productCode}. O lote foi encerrado e saiu dos alertas.`
+        : `Baixa registrada para ${productCode}. Restam ${remainingQuantity} unidades.`,
+    );
+  }
+
   function changePage(page: number) {
     if (
       page === expirationPage.pagination.page ||
@@ -444,6 +464,18 @@ export function ExpirationsManager({
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+                onClick={() => {
+                  setErrorMessage("");
+                  setSuccessMessage("");
+                  setIsWriteOffOpen(true);
+                }}
+                type="button"
+              >
+                Baixa rápida
+              </button>
+
               <button
                 className="inline-flex h-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-800 transition hover:border-emerald-400 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoading || isExporting}
@@ -755,6 +787,15 @@ export function ExpirationsManager({
           isAdmin={isAdmin}
           onClose={closeForm}
           onSaved={handleExpirationSaved}
+          stores={stores}
+        />
+      ) : null}
+
+      {isWriteOffOpen ? (
+        <ExpirationWriteOffModal
+          isAdmin={isAdmin}
+          onClose={() => setIsWriteOffOpen(false)}
+          onSaved={handleWriteOffSaved}
           stores={stores}
         />
       ) : null}

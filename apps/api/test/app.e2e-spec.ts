@@ -105,6 +105,17 @@ interface ExpirationOverviewBody {
   priorityItems: ExpirationBody[];
 }
 
+interface ExpirationWriteOffBody {
+  expiration: ExpirationBody;
+  writeOff: {
+    reason: 'SOLD' | 'EXPIRED' | 'DISCARDED';
+    quantity: number;
+    previousQuantity: number;
+    remainingQuantity: number;
+    performedBy: UserBody;
+  };
+}
+
 describe('API (e2e)', () => {
   jest.setTimeout(60000);
 
@@ -161,6 +172,15 @@ describe('API (e2e)', () => {
     if (!prisma) return;
 
     try {
+      await prisma.productLotWriteOff.deleteMany({
+        where: {
+          productLot: {
+            storeProduct: {
+              product: { code: { in: [productCode, updatedProductCode] } },
+            },
+          },
+        },
+      });
       await prisma.productLot.deleteMany({
         where: {
           storeProduct: {
@@ -214,6 +234,12 @@ describe('API (e2e)', () => {
     await request(app.getHttpServer()).get('/expirations/page').expect(401);
     await request(app.getHttpServer()).get('/expirations/overview').expect(401);
     await request(app.getHttpServer()).get('/expirations/export').expect(401);
+    await request(app.getHttpServer())
+      .get('/expirations/write-off/search')
+      .expect(401);
+    await request(app.getHttpServer())
+      .get('/expirations/write-offs')
+      .expect(401);
   });
 
   it('covers the administrator and store-user journeys', async () => {
@@ -569,6 +595,54 @@ describe('API (e2e)', () => {
       .expect(201);
     const ownB = ownBResponse.body as ExpirationBody;
     expect(ownB.storeProduct.store.id).toBe(storeB.id);
+
+    const writeOffSearchResponse = await request(app.getHttpServer())
+      .get('/expirations/write-off/search')
+      .query({ query: barcode })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const writeOffCandidates = writeOffSearchResponse.body as ExpirationBody[];
+    expect(writeOffCandidates).toHaveLength(2);
+    expect(writeOffCandidates[0]?.id).toBe(expirationA.id);
+    expect(
+      writeOffCandidates.every(
+        ({ storeProduct }) => storeProduct.store.id === storeA.id,
+      ),
+    ).toBe(true);
+
+    await request(app.getHttpServer())
+      .post(`/expirations/${ownB.id}/write-off`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ quantity: 1, reason: 'SOLD' })
+      .expect(403);
+
+    const writeOffResponse = await request(app.getHttpServer())
+      .post(`/expirations/${expirationA.id}/write-off`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ quantity: 2, reason: 'SOLD', notes: '  Venda E2E  ' })
+      .expect(201);
+    const writeOff = writeOffResponse.body as ExpirationWriteOffBody;
+    expect(writeOff.expiration.quantity).toBe(3);
+    expect(writeOff.expiration.isActive).toBe(true);
+    expect(writeOff.writeOff).toEqual(
+      expect.objectContaining({
+        reason: 'SOLD',
+        quantity: 2,
+        previousQuantity: 5,
+        remainingQuantity: 3,
+      }),
+    );
+    expect(writeOff.writeOff.performedBy.id).toBe(sessionA.user.id);
+
+    const writeOffHistoryResponse = await request(app.getHttpServer())
+      .get('/expirations/write-offs')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const writeOffHistory = writeOffHistoryResponse.body as Array<
+      ExpirationWriteOffBody['writeOff']
+    >;
+    expect(writeOffHistory).toHaveLength(1);
+    expect(writeOffHistory[0]?.remainingQuantity).toBe(3);
 
     const listAResponse = await request(app.getHttpServer())
       .get('/expirations')

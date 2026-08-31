@@ -1,15 +1,20 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import * as XLSX from '@e965/xlsx';
 import type { Prisma } from '../../generated/prisma/client';
-import { UserRole } from '../../generated/prisma/enums';
+import {
+  ProductLotWriteOffReason,
+  UserRole,
+} from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
+import type { CreateWriteOffDto } from './dto/create-write-off.dto';
 import {
   ExpirationStatusFilter,
   type FilterExpirationsQueryDto,
@@ -17,10 +22,19 @@ import {
 } from './dto/list-expirations-query.dto';
 import type { UpdateExpirationDto } from './dto/update-expiration.dto';
 import type {
+  ListWriteOffsQueryDto,
+  SearchWriteOffQueryDto,
+} from './dto/search-write-off-query.dto';
+import type {
   ExpirationOverview,
   ExpirationPage,
   ExpirationSummary,
 } from './expiration-page.types';
+import {
+  type ExpirationWriteOffRecord,
+  type ExpirationWriteOffResult,
+  expirationWriteOffSelect,
+} from './expiration-write-off.types';
 
 interface ExpirationDateLimits {
   today: Date;
@@ -258,6 +272,176 @@ export class ExpirationsService {
       }) as Buffer,
       fileName: `validades-${this.getSaoPauloDateStamp()}.xlsx`,
     };
+  }
+
+  async searchWriteOffCandidates(
+    query: SearchWriteOffQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationRecord[]> {
+    const accessWhere = this.getAccessWhere(user, query.storeId);
+    const availableWhere: Prisma.ProductLotWhereInput = {
+      AND: [
+        accessWhere,
+        {
+          isActive: true,
+          quantity: { gt: 0 },
+          storeProduct: {
+            isActive: true,
+            store: { isActive: true },
+            product: { isActive: true },
+          },
+        },
+      ],
+    };
+    const orderBy: Prisma.ProductLotOrderByWithRelationInput[] = [
+      { expirationDate: 'asc' },
+      { createdAt: 'asc' },
+    ];
+    const exactMatches = await this.prisma.productLot.findMany({
+      where: {
+        AND: [
+          availableWhere,
+          {
+            storeProduct: {
+              product: {
+                OR: [{ code: query.query }, { barcode: query.query }],
+              },
+            },
+          },
+        ],
+      },
+      select: expirationSelect,
+      orderBy,
+      take: query.limit,
+    });
+
+    if (exactMatches.length > 0) {
+      return exactMatches;
+    }
+
+    return this.prisma.productLot.findMany({
+      where: {
+        AND: [
+          availableWhere,
+          {
+            OR: [
+              { batchNumber: { contains: query.query, mode: 'insensitive' } },
+              {
+                storeProduct: {
+                  product: {
+                    OR: [
+                      { code: { contains: query.query, mode: 'insensitive' } },
+                      {
+                        barcode: {
+                          contains: query.query,
+                          mode: 'insensitive',
+                        },
+                      },
+                      { name: { contains: query.query, mode: 'insensitive' } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      select: expirationSelect,
+      orderBy,
+      take: query.limit,
+    });
+  }
+
+  async findWriteOffs(
+    query: ListWriteOffsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationWriteOffRecord[]> {
+    const accessWhere = this.getAccessWhere(user, query.storeId);
+
+    return this.prisma.productLotWriteOff.findMany({
+      where: { productLot: accessWhere },
+      select: expirationWriteOffSelect,
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+  }
+
+  async writeOff(
+    id: string,
+    dto: CreateWriteOffDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationWriteOffResult> {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const expiration = await transaction.productLot.findUnique({
+          where: { id },
+          select: expirationSelect,
+        });
+
+        if (!expiration) {
+          throw new NotFoundException('Registro de validade não encontrado.');
+        }
+
+        this.ensureStoreAccess(user, expiration.storeProduct.store.id);
+
+        if (!expiration.isActive || expiration.quantity <= 0) {
+          throw new BadRequestException(
+            'Este lote já foi totalmente baixado ou está inativo.',
+          );
+        }
+
+        if (dto.quantity > expiration.quantity) {
+          throw new BadRequestException(
+            `A quantidade máxima disponível para baixa é ${expiration.quantity}.`,
+          );
+        }
+
+        if (
+          dto.reason === ProductLotWriteOffReason.EXPIRED &&
+          expiration.expirationDate >= this.getExpirationDateLimits().today
+        ) {
+          throw new BadRequestException(
+            'Este lote ainda não venceu. Use o motivo Descartado quando aplicável.',
+          );
+        }
+
+        const remainingQuantity = expiration.quantity - dto.quantity;
+        const updatedExpiration = await transaction.productLot.update({
+          where: {
+            id,
+            quantity: expiration.quantity,
+            isActive: true,
+          },
+          data: {
+            quantity: remainingQuantity,
+            isActive: remainingQuantity > 0,
+          },
+          select: expirationSelect,
+        });
+        const writeOff = await transaction.productLotWriteOff.create({
+          data: {
+            productLotId: id,
+            performedByUserId: user.id,
+            reason: dto.reason,
+            quantity: dto.quantity,
+            previousQuantity: expiration.quantity,
+            remainingQuantity,
+            notes: dto.notes ?? null,
+          },
+          select: expirationWriteOffSelect,
+        });
+
+        return { expiration: updatedExpiration, writeOff };
+      });
+    } catch (error: unknown) {
+      if (this.hasPrismaErrorCode(error, 'P2025')) {
+        throw new ConflictException(
+          'A quantidade deste lote foi alterada por outra operação. Atualize a busca e tente novamente.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async create(
@@ -700,5 +884,14 @@ export class ExpirationsService {
 
   private parseDateOnly(value: string): Date {
     return new Date(`${value}T00:00:00.000Z`);
+  }
+
+  private hasPrismaErrorCode(error: unknown, code: string): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === code
+    );
   }
 }

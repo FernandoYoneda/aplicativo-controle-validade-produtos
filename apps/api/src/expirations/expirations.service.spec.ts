@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as XLSX from '@e965/xlsx';
-import { UserRole } from '../../generated/prisma/enums';
+import {
+  ProductLotWriteOffReason,
+  UserRole,
+} from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpirationStatusFilter } from './dto/list-expirations-query.dto';
@@ -29,6 +32,11 @@ describe('ExpirationsService', () => {
     },
     productLot: {
       create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    productLotWriteOff: {
+      create: jest.fn(),
     },
   };
 
@@ -48,6 +56,9 @@ describe('ExpirationsService', () => {
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+    },
+    productLotWriteOff: {
+      findMany: jest.fn(),
     },
     $transaction: jest.fn(executeTransaction),
   };
@@ -167,6 +178,89 @@ describe('ExpirationsService', () => {
     );
 
     expect(prismaServiceMock.productLot.findMany).not.toHaveBeenCalled();
+  });
+
+  it('should prioritize the earliest lot when searching by barcode', async () => {
+    prismaServiceMock.productLot.findMany.mockResolvedValue([expiration]);
+
+    await expect(
+      service.searchWriteOffCandidates(
+        { query: '7891234567890', limit: 20 },
+        storeUser,
+      ),
+    ).resolves.toEqual([expiration]);
+    expect(prismaServiceMock.productLot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ expirationDate: 'asc' }, { createdAt: 'asc' }],
+        take: 20,
+      }),
+    );
+  });
+
+  it('should register a partial sale and keep the lot active', async () => {
+    transactionMock.productLot.findUnique.mockResolvedValue(expiration);
+    transactionMock.productLot.update.mockResolvedValue({
+      ...expiration,
+      quantity: 7,
+    });
+    const writeOff = {
+      id: '00000000-0000-4000-8000-000000000701',
+      reason: ProductLotWriteOffReason.SOLD,
+      quantity: 3,
+      previousQuantity: 10,
+      remainingQuantity: 7,
+    };
+    transactionMock.productLotWriteOff.create.mockResolvedValue(writeOff);
+
+    await expect(
+      service.writeOff(
+        expirationId,
+        { quantity: 3, reason: ProductLotWriteOffReason.SOLD },
+        storeUser,
+      ),
+    ).resolves.toEqual({
+      expiration: { ...expiration, quantity: 7 },
+      writeOff,
+    });
+    expect(transactionMock.productLot.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { quantity: 7, isActive: true },
+      }),
+    );
+    expect(transactionMock.productLotWriteOff.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // O matcher do Jest é tipado como any; a asserção valida somente o payload observado.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        data: expect.objectContaining({
+          quantity: 3,
+          previousQuantity: 10,
+          remainingQuantity: 7,
+          performedByUserId: storeUser.id,
+        }),
+      }),
+    );
+  });
+
+  it('should deactivate a lot when the full quantity is written off', async () => {
+    transactionMock.productLot.findUnique.mockResolvedValue(expiration);
+    transactionMock.productLot.update.mockResolvedValue({
+      ...expiration,
+      quantity: 0,
+      isActive: false,
+    });
+    transactionMock.productLotWriteOff.create.mockResolvedValue({
+      id: 'write-off',
+    });
+
+    await service.writeOff(
+      expirationId,
+      { quantity: 10, reason: ProductLotWriteOffReason.SOLD },
+      adminUser,
+    );
+
+    expect(transactionMock.productLot.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { quantity: 0, isActive: false } }),
+    );
   });
 
   it('should return a filtered expiration page and global summary', async () => {
