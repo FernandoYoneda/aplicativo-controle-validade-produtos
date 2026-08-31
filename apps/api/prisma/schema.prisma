@@ -15,6 +15,14 @@ enum UserRole {
   @@map("user_role")
 }
 
+enum ProductLotWriteOffReason {
+  SOLD
+  EXPIRED
+  DISCARDED
+
+  @@map("product_lot_write_off_reason")
+}
+
 model Store {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(20)
@@ -42,7 +50,8 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  store Store? @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  store               Store?               @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productLotWriteOffs ProductLotWriteOff[]
 
   @@index([storeId])
   @@index([role])
@@ -96,10 +105,31 @@ model ProductLot {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  storeProduct StoreProduct @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  storeProduct StoreProduct         @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  writeOffs    ProductLotWriteOff[]
 
   @@index([storeProductId, expirationDate])
   @@index([expirationDate])
   @@index([isActive])
   @@map("product_lots")
+}
+
+model ProductLotWriteOff {
+  id                String                   @id @default(uuid()) @db.Uuid
+  productLotId      String                   @map("product_lot_id") @db.Uuid
+  performedByUserId String                   @map("performed_by_user_id") @db.Uuid
+  reason            ProductLotWriteOffReason
+  quantity          Int
+  previousQuantity  Int                      @map("previous_quantity")
+  remainingQuantity Int                      @map("remaining_quantity")
+  notes             String?                  @db.VarChar(500)
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  productLot  ProductLot @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  performedBy User       @relation(fields: [performedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([productLotId, createdAt])
+  @@index([performedByUserId, createdAt])
+  @@index([reason, createdAt])
+  @@map("product_lot_write_offs")
 }

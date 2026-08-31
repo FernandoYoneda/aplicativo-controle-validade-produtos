@@ -19,11 +19,16 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateExpirationDto } from './dto/create-expiration.dto';
+import { CreateWriteOffDto } from './dto/create-write-off.dto';
 import {
   FilterExpirationsQueryDto,
   ListExpirationsQueryDto,
 } from './dto/list-expirations-query.dto';
 import { UpdateExpirationDto } from './dto/update-expiration.dto';
+import {
+  ListWriteOffsQueryDto,
+  SearchWriteOffQueryDto,
+} from './dto/search-write-off-query.dto';
 import type {
   ExpirationOverview,
   ExpirationPage,
@@ -32,6 +37,10 @@ import {
   type ExpirationRecord,
   ExpirationsService,
 } from './expirations.service';
+import type {
+  ExpirationWriteOffRecord,
+  ExpirationWriteOffResult,
+} from './expiration-write-off.types';
 
 @Controller('expirations')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -82,6 +91,27 @@ export class ExpirationsController {
     return new StreamableFile(report.buffer);
   }
 
+  @Get('write-off/search')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  searchWriteOffCandidates(
+    @Query() query: SearchWriteOffQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationRecord[]> {
+    return this.expirationsService.searchWriteOffCandidates(
+      query,
+      request.user,
+    );
+  }
+
+  @Get('write-offs')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  findWriteOffs(
+    @Query() query: ListWriteOffsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationWriteOffRecord[]> {
+    return this.expirationsService.findWriteOffs(query, request.user);
+  }
+
   @Post()
   @Roles(UserRole.ADMIN, UserRole.STORE_USER)
   create(
@@ -89,6 +119,20 @@ export class ExpirationsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<ExpirationRecord> {
     return this.expirationsService.create(createExpirationDto, request.user);
+  }
+
+  @Post(':id/write-off')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  writeOff(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() createWriteOffDto: CreateWriteOffDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationWriteOffResult> {
+    return this.expirationsService.writeOff(
+      id,
+      createWriteOffDto,
+      request.user,
+    );
   }
 
   @Patch(':id')

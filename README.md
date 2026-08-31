@@ -21,6 +21,9 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - pesquisa de validades por produto, código, loja ou lote processada pela API;
 - filtros de situação e de loja, com totais consolidados preservados;
 - exportação das validades filtradas para Excel;
+- baixa rápida por leitor de código de barras USB ou busca manual;
+- baixa parcial por venda, vencimento ou descarte, com encerramento automático do lote quando o saldo chega a zero;
+- histórico auditável das baixas com responsável, quantidade e saldo do lote;
 - acompanhamento de produtos vencidos, próximos de 30 dias, de 31 dias a 3 meses, de 3 a 6 meses, de 6 meses a 1 ano e acima de 1 ano.
 
 ### Usuário de loja
@@ -33,7 +36,14 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - exportação para Excel restrita aos registros da própria unidade;
 - cadastro de lotes usando automaticamente a loja associada ao usuário;
 - busca rápida de produtos ativos por código, código de barras ou nome durante o cadastro de validade;
+- baixa rápida dos lotes da própria unidade por leitor USB ou busca manual;
 - isolamento de dados entre unidades.
+
+### Baixa rápida de produtos
+
+O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e envia `Enter`; o sistema localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO).
+
+A operação aceita quantidades parciais e os motivos `Vendido`, `Vencido` e `Descartado`. Quando o saldo chega a zero, o lote é inativado automaticamente e deixa de aparecer nos alertas ativos. Todas as baixas permanecem no histórico com data, usuário responsável, quantidade anterior e saldo restante.
 
 ### Importação de produtos
 
@@ -477,7 +487,10 @@ Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 | `GET`   | `/expirations/page`     | Administrador e usuário de loja |
 | `GET`   | `/expirations/overview` | Administrador e usuário de loja |
 | `GET`   | `/expirations/export`   | Administrador e usuário de loja |
+| `GET`   | `/expirations/write-off/search` | Administrador e usuário de loja |
+| `GET`   | `/expirations/write-offs` | Administrador e usuário de loja |
 | `POST`  | `/expirations`          | Administrador e usuário de loja |
+| `POST`  | `/expirations/:id/write-off` | Administrador e usuário de loja |
 | `PATCH` | `/expirations/:id`      | Administrador e usuário de loja |
 
 Usuários de loja recebem somente os registros da própria unidade e não podem cadastrar ou atualizar validades de outras lojas.

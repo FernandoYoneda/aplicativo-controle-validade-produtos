@@ -1,6 +1,9 @@
 import { StreamableFile } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserRole } from '../../generated/prisma/enums';
+import {
+  ProductLotWriteOffReason,
+  UserRole,
+} from '../../generated/prisma/enums';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import {
@@ -69,6 +72,9 @@ describe('ExpirationsController', () => {
     findPage: jest.fn(),
     findOverview: jest.fn(),
     exportSpreadsheet: jest.fn(),
+    searchWriteOffCandidates: jest.fn(),
+    findWriteOffs: jest.fn(),
+    writeOff: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -211,6 +217,39 @@ describe('ExpirationsController', () => {
 
     expect(expirationsServiceMock.create).toHaveBeenCalledWith(
       createExpirationDto,
+      authenticatedUser,
+    );
+  });
+
+  it('should delegate quick write-off search to the service', async () => {
+    const query = { query: '7891234567890', limit: 20 };
+    expirationsServiceMock.searchWriteOffCandidates.mockResolvedValue([
+      expiration,
+    ]);
+
+    await expect(
+      controller.searchWriteOffCandidates(query, request),
+    ).resolves.toEqual([expiration]);
+    expect(
+      expirationsServiceMock.searchWriteOffCandidates,
+    ).toHaveBeenCalledWith(query, authenticatedUser);
+  });
+
+  it('should delegate a partial write-off to the service', async () => {
+    const dto = {
+      quantity: 2,
+      reason: ProductLotWriteOffReason.SOLD,
+      notes: 'Venda no caixa',
+    };
+    const result = { expiration: { ...expiration, quantity: 8 } };
+    expirationsServiceMock.writeOff.mockResolvedValue(result);
+
+    await expect(
+      controller.writeOff(expirationId, dto, request),
+    ).resolves.toEqual(result);
+    expect(expirationsServiceMock.writeOff).toHaveBeenCalledWith(
+      expirationId,
+      dto,
       authenticatedUser,
     );
   });
