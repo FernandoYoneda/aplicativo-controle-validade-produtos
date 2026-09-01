@@ -10,6 +10,7 @@ import {
   UserRole,
 } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
+import { ExpirationNotificationsService } from '../notifications/expiration-notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExpirationStatusFilter } from './dto/list-expirations-query.dto';
 import {
@@ -61,6 +62,10 @@ describe('ExpirationsService', () => {
       findMany: jest.fn(),
     },
     $transaction: jest.fn(executeTransaction),
+  };
+
+  const notificationsServiceMock = {
+    notifyWriteOff: jest.fn().mockResolvedValue(1),
   };
 
   const adminUser: AuthenticatedUser = {
@@ -120,6 +125,10 @@ describe('ExpirationsService', () => {
         {
           provide: PrismaService,
           useValue: prismaServiceMock,
+        },
+        {
+          provide: ExpirationNotificationsService,
+          useValue: notificationsServiceMock,
         },
       ],
     }).compile();
@@ -272,6 +281,9 @@ describe('ExpirationsService', () => {
         }),
       }),
     );
+    expect(notificationsServiceMock.notifyWriteOff).toHaveBeenCalledWith(
+      writeOff,
+    );
   });
 
   it('should deactivate a lot when the full quantity is written off', async () => {
@@ -294,6 +306,36 @@ describe('ExpirationsService', () => {
     expect(transactionMock.productLot.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { quantity: 0, isActive: false } }),
     );
+  });
+
+  it('should keep a completed write-off when its email notification fails', async () => {
+    transactionMock.productLot.findUnique.mockResolvedValue(expiration);
+    transactionMock.productLot.update.mockResolvedValue({
+      ...expiration,
+      quantity: 7,
+    });
+    const writeOff = {
+      id: '00000000-0000-4000-8000-000000000702',
+      reason: ProductLotWriteOffReason.SOLD,
+      quantity: 3,
+      previousQuantity: 10,
+      remainingQuantity: 7,
+    };
+    transactionMock.productLotWriteOff.create.mockResolvedValue(writeOff);
+    notificationsServiceMock.notifyWriteOff.mockRejectedValueOnce(
+      new Error('SMTP indisponível'),
+    );
+
+    await expect(
+      service.writeOff(
+        expirationId,
+        { quantity: 3, reason: ProductLotWriteOffReason.SOLD },
+        storeUser,
+      ),
+    ).resolves.toEqual({
+      expiration: { ...expiration, quantity: 7 },
+      writeOff,
+    });
   });
 
   it('should return a filtered expiration page and global summary', async () => {
