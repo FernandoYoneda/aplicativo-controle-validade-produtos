@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as XLSX from '@e965/xlsx';
@@ -13,6 +14,7 @@ import {
 } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExpirationNotificationsService } from '../notifications/expiration-notifications.service';
 import { extractEmbeddedProductCodeFromEan13 } from '../products/product-code-matching';
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
 import type { CreateWriteOffDto } from './dto/create-write-off.dto';
@@ -95,7 +97,12 @@ export type ExpirationRecord = Prisma.ProductLotGetPayload<{
 
 @Injectable()
 export class ExpirationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ExpirationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: ExpirationNotificationsService,
+  ) {}
 
   async findAll(user: AuthenticatedUser): Promise<ExpirationRecord[]> {
     const where: Prisma.ProductLotWhereInput =
@@ -401,7 +408,7 @@ export class ExpirationsService {
     user: AuthenticatedUser,
   ): Promise<ExpirationWriteOffResult> {
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      const result = await this.prisma.$transaction(async (transaction) => {
         const expiration = await transaction.productLot.findUnique({
           where: { id },
           select: expirationSelect,
@@ -462,6 +469,20 @@ export class ExpirationsService {
 
         return { expiration: updatedExpiration, writeOff };
       });
+
+      try {
+        await this.notifications.notifyWriteOff(result.writeOff);
+      } catch (notificationError: unknown) {
+        const message =
+          notificationError instanceof Error
+            ? notificationError.message
+            : 'Erro desconhecido';
+        this.logger.error(
+          `A baixa foi concluída, mas o aviso por e-mail falhou: ${message}`,
+        );
+      }
+
+      return result;
     } catch (error: unknown) {
       if (this.hasPrismaErrorCode(error, 'P2025')) {
         throw new ConflictException(
