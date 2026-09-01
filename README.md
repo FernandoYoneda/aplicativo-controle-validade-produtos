@@ -160,6 +160,13 @@ ADMIN_LOGIN="admin"
 ADMIN_PASSWORD="defina-uma-senha-segura"
 JWT_ACCESS_SECRET="defina-um-segredo-longo-e-aleatorio"
 JWT_ACCESS_EXPIRES_IN_SECONDS=900
+MAIL_ENABLED=false
+MAIL_FROM="Controle de Validade <validade@empresa.com.br>"
+SMTP_HOST="smtp.empresa.com.br"
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=""
+SMTP_PASSWORD=""
 ```
 
 Regras importantes:
@@ -168,6 +175,18 @@ Regras importantes:
 - `JWT_ACCESS_SECRET` não deve ser compartilhado nem versionado;
 - a senha do banco em `DATABASE_URL` deve ser igual a `POSTGRES_PASSWORD`;
 - arquivos `.env` são ignorados pelo Git.
+
+### Alertas por e-mail
+
+Os alertas são executados diariamente às 08:00 no horário de São Paulo. O sistema:
+
+- avisa administradores e usuários da loja quando um lote vence nos próximos 30 dias;
+- envia outro aviso quando o lote passa para a situação vencido;
+- avisa os administradores após baixas por venda, vencimento ou descarte;
+- registra cada tentativa no banco e não repete um envio concluído;
+- repete automaticamente tentativas que falharam.
+
+Para ativar, configure o servidor SMTP e altere `MAIL_ENABLED` para `true`. Use a porta `587` com `SMTP_SECURE=false` para STARTTLS ou a porta `465` com `SMTP_SECURE=true` para TLS direto. Nunca versione `SMTP_PASSWORD`.
 
 ### Aplicação web
 
@@ -257,6 +276,8 @@ Configure obrigatoriamente:
 - `ADMIN_PASSWORD`: senha inicial do administrador;
 - `JWT_ACCESS_SECRET`: segredo longo e aleatório para os tokens;
 - `APP_VERSION`: versão das imagens que será implantada.
+
+Para ativar os alertas por e-mail, configure também `MAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` e defina `MAIL_ENABLED=true`.
 
 Em produção, prefira uma versão fixa:
 

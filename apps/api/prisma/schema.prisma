@@ -23,6 +23,24 @@ enum ProductLotWriteOffReason {
   @@map("product_lot_write_off_reason")
 }
 
+enum ExpirationEmailNotificationType {
+  EXPIRATION_NEXT_30_DAYS
+  EXPIRATION_EXPIRED
+  WRITE_OFF_SOLD
+  WRITE_OFF_EXPIRED
+  WRITE_OFF_DISCARDED
+
+  @@map("expiration_email_notification_type")
+}
+
+enum ExpirationEmailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@map("expiration_email_delivery_status")
+}
+
 model Store {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(20)
@@ -107,6 +125,7 @@ model ProductLot {
 
   storeProduct StoreProduct         @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   writeOffs    ProductLotWriteOff[]
+  emailDeliveries ExpirationEmailDelivery[]
 
   @@index([storeProductId, expirationDate])
   @@index([expirationDate])
@@ -127,9 +146,34 @@ model ProductLotWriteOff {
 
   productLot  ProductLot @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   performedBy User       @relation(fields: [performedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  emailDeliveries ExpirationEmailDelivery[]
 
   @@index([productLotId, createdAt])
   @@index([performedByUserId, createdAt])
   @@index([reason, createdAt])
   @@map("product_lot_write_offs")
+}
+
+model ExpirationEmailDelivery {
+  id               String                          @id @default(uuid()) @db.Uuid
+  notificationType ExpirationEmailNotificationType @map("notification_type")
+  status           ExpirationEmailDeliveryStatus   @default(PENDING)
+  fingerprint      String                          @unique @db.VarChar(255)
+  recipientName    String?                         @map("recipient_name") @db.VarChar(120)
+  recipientEmail   String                          @map("recipient_email") @db.VarChar(255)
+  subject          String                          @db.VarChar(255)
+  errorMessage     String?                         @map("error_message") @db.VarChar(1000)
+  productLotId     String?                         @map("product_lot_id") @db.Uuid
+  writeOffId       String?                         @map("write_off_id") @db.Uuid
+  sentAt           DateTime?                       @map("sent_at") @db.Timestamptz(3)
+  createdAt        DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  productLot ProductLot?         @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  writeOff   ProductLotWriteOff? @relation(fields: [writeOffId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([notificationType, status, createdAt])
+  @@index([productLotId, createdAt])
+  @@index([writeOffId, createdAt])
+  @@map("expiration_email_deliveries")
 }
