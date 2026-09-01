@@ -107,3 +107,6 @@ jobs:
 
       - name: Compilar imagens Docker
         run: docker compose build setup api web
+
+      - name: Validar dependências de execução da API
+        run: docker compose run --rm --no-deps --entrypoint node api -e "require('./apps/api/dist/src/app.module.js')"
