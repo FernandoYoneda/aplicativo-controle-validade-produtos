@@ -196,6 +196,46 @@ describe('ExpirationsService', () => {
     );
   });
 
+  it('should find alerts by the product code embedded in a valid EAN-13', async () => {
+    prismaServiceMock.productLot.count.mockResolvedValue(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([]);
+
+    await service.findAlerts(
+      {
+        page: 1,
+        pageSize: 25,
+        search: '7891033859474',
+        status: ExpirationAlertStatusFilter.ALL,
+        review: ExpirationAlertReviewFilter.ALL,
+      },
+      adminUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        AND: [
+          {
+            AND: [
+              {},
+              expect.objectContaining({ isActive: true }),
+              {
+                OR: expect.arrayContaining([
+                  {
+                    storeProduct: {
+                      product: { code: '85947' },
+                    },
+                  },
+                ]) as unknown[],
+              },
+            ],
+          },
+          {},
+          {},
+        ],
+      },
+    });
+  });
+
   it('should acknowledge the current alert for the authenticated user', async () => {
     const acknowledgement = {
       id: '00000000-0000-4000-8000-000000000701',
@@ -481,6 +521,39 @@ describe('ExpirationsService', () => {
         storeProduct: {
           storeId,
         },
+      },
+    });
+  });
+
+  it('should find expirations by the product code embedded in a valid EAN-13', async () => {
+    prismaServiceMock.productLot.count.mockResolvedValue(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([]);
+
+    await service.findPage(
+      {
+        page: 1,
+        pageSize: 25,
+        search: '7891033859474',
+        status: ExpirationStatusFilter.ALL,
+      },
+      adminUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        AND: [
+          {},
+          {
+            OR: expect.arrayContaining([
+              {
+                storeProduct: {
+                  product: { code: '85947' },
+                },
+              },
+            ]) as unknown[],
+          },
+          {},
+        ],
       },
     });
   });

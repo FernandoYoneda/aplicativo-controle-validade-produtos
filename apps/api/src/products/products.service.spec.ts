@@ -130,6 +130,35 @@ describe('ProductsService', () => {
     );
   });
 
+  it('should find a paginated product by the code embedded in a valid EAN-13', async () => {
+    prismaServiceMock.product.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(60)
+      .mockResolvedValueOnce(55);
+    prismaServiceMock.product.findMany.mockResolvedValue([
+      { ...product, code: '85947', barcode: null },
+    ]);
+
+    await service.findPage({
+      page: 1,
+      pageSize: 25,
+      search: '7891033859474',
+    });
+
+    expect(prismaServiceMock.product.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        OR: expect.arrayContaining([{ code: '85947' }]) as unknown[],
+      },
+    });
+    expect(prismaServiceMock.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: expect.arrayContaining([{ code: '85947' }]) as unknown[],
+        },
+      }),
+    );
+  });
+
   it('should search only active products with a limited result set', async () => {
     prismaServiceMock.product.findMany.mockResolvedValue([product]);
 

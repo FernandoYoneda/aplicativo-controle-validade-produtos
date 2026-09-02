@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogoutButton } from "../../components/auth/logout-button";
 import { AppFooter } from "../../components/layout/app-footer";
+import { AppHeader } from "../../components/layout/app-header";
 import { StoresManager } from "../../components/stores/stores-manager";
 import { getAuthenticatedUser } from "../../lib/auth";
 import { getStores } from "../../lib/stores";
@@ -46,59 +45,10 @@ export default async function StoresPage() {
 
   return (
     <main className="min-h-screen bg-[var(--casabella-background)]">
-      <header className="border-b border-[var(--casabella-border)] bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4 sm:px-8 lg:px-10">
-          <div className="flex min-w-0 items-center gap-4">
-            <Link href="/" aria-label="Voltar ao painel">
-              <Image
-                className="h-auto w-[150px] sm:w-[180px]"
-                src="/brand/casabella-horizontal.png"
-                alt="Grupo CasaBella Fragrâncias"
-                width={360}
-                height={203}
-                priority
-              />
-            </Link>
-
-            <div className="hidden h-9 w-px bg-[var(--casabella-border)] sm:block" />
-
-            <div className="hidden sm:block">
-              <p className="text-sm font-bold text-[var(--casabella-teal-dark)]">
-                Controle de Validade
-              </p>
-              <p className="text-xs text-[var(--casabella-muted)]">
-                Gerenciamento de lojas
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden text-right md:block">
-              <p className="max-w-52 truncate text-sm font-semibold text-[var(--casabella-graphite)]">
-                {user.name}
-              </p>
-              <p className="text-xs text-[var(--casabella-muted)]">
-                Administrador
-              </p>
-            </div>
-
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
+      <AppHeader section="Gerenciamento de lojas" user={user} />
 
       <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
-        <nav aria-label="Navegação estrutural">
-          <Link
-            className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--casabella-teal)] transition hover:text-[var(--casabella-teal-dark)]"
-            href="/"
-          >
-            <span aria-hidden="true">←</span>
-            Voltar ao painel
-          </Link>
-        </nav>
-
-        <section className="relative mt-5 overflow-hidden rounded-3xl bg-[var(--casabella-teal)] px-6 py-8 text-white shadow-[0_20px_60px_rgba(0,67,77,0.13)] sm:px-10 sm:py-10">
+        <section className="relative overflow-hidden rounded-3xl bg-[var(--casabella-teal)] px-6 py-8 text-white shadow-[0_20px_60px_rgba(0,67,77,0.13)] sm:px-10 sm:py-10">
           <div
             className="absolute -top-24 -right-20 size-64 rounded-full border-[45px] border-white/6"
             aria-hidden="true"

@@ -9,6 +9,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Administrador
 
 - autenticação por login ou e-mail;
+- menu lateral responsivo com acesso rápido às áreas permitidas, identificação do usuário, versão e saída;
 - painel consolidado com indicadores por período e registros prioritários;
 - alerta visual automático para registros vencidos ou próximos do vencimento;
 - central de alertas com busca, filtros por loja, situação e verificação;
@@ -31,6 +32,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Usuário de loja
 
 - autenticação por login ou e-mail;
+- menu lateral responsivo com acesso rápido às áreas da operação, identificação do usuário, versão e saída;
 - painel com indicadores da própria unidade;
 - alerta visual de validades vencidas ou próximas do vencimento na própria unidade;
 - central de alertas restrita à própria unidade, com registro de verificação;
@@ -48,7 +50,7 @@ O botão `Baixa rápida` da área de Validades aceita leitores USB configurados 
 
 Durante a operação, a tela informa se o leitor está pronto, buscando ou se o produto foi localizado. Leituras duplicadas em sequência são ignoradas, códigos não encontrados ficam selecionados para serem substituídos pela próxima leitura e o foco retorna automaticamente ao campo após cada baixa. O som de confirmação é opcional e pode ser ativado no próprio modal.
 
-Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, a busca valida o dígito verificador e também procura pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
+Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, as buscas de Produtos, Nova validade, Validades, Alertas e Baixa rápida validam o dígito verificador e também procuram pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
 
 A operação aceita quantidades parciais e os motivos `Vendido`, `Vencido` e `Descartado`. Quando o saldo chega a zero, o lote é inativado automaticamente e deixa de aparecer nos alertas ativos. Todas as baixas permanecem no histórico com data, usuário responsável, quantidade anterior e saldo restante.
 
