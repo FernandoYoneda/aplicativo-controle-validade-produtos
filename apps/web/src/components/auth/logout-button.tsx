@@ -3,7 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function LogoutButton() {
+interface LogoutButtonProps {
+  className?: string;
+}
+
+export function LogoutButton({ className = "" }: LogoutButtonProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -26,7 +30,7 @@ export function LogoutButton() {
 
   return (
     <button
-      className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-graphite)] transition hover:border-[var(--casabella-coral)] hover:text-[var(--casabella-coral-dark)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] disabled:cursor-not-allowed disabled:opacity-60"
+      className={`inline-flex h-10 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-graphite)] transition hover:border-[var(--casabella-coral)] hover:text-[var(--casabella-coral-dark)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       type="button"
       onClick={handleLogout}
       disabled={isSubmitting}

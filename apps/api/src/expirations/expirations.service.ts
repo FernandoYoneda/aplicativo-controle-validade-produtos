@@ -849,6 +849,9 @@ export class ExpirationsService {
     dateLimits: ExpirationDateLimits,
   ): Prisma.ProductLotWhereInput {
     const search = query.search?.trim();
+    const embeddedProductCode = search
+      ? extractEmbeddedProductCodeFromEan13(search)
+      : null;
     const searchWhere: Prisma.ProductLotWhereInput | undefined = search
       ? {
           OR: [
@@ -889,6 +892,15 @@ export class ExpirationsService {
                 },
               },
             },
+            ...(embeddedProductCode
+              ? [
+                  {
+                    storeProduct: {
+                      product: { code: embeddedProductCode },
+                    },
+                  },
+                ]
+              : []),
           ],
         }
       : undefined;
@@ -908,6 +920,9 @@ export class ExpirationsService {
     dateLimits: ExpirationDateLimits,
   ): Prisma.ProductLotWhereInput {
     const search = searchValue?.trim();
+    const embeddedProductCode = search
+      ? extractEmbeddedProductCodeFromEan13(search)
+      : null;
 
     return {
       AND: [
@@ -977,6 +992,15 @@ export class ExpirationsService {
                       },
                     },
                   },
+                  ...(embeddedProductCode
+                    ? [
+                        {
+                          storeProduct: {
+                            product: { code: embeddedProductCode },
+                          },
+                        },
+                      ]
+                    : []),
                 ],
               },
             ]
