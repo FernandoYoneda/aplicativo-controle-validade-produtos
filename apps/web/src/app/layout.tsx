@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+
+import { BarcodeScannerShortcutGuard } from "../components/barcode-scanner-shortcut-guard";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,7 +30,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <BarcodeScannerShortcutGuard />
+        {children}
+      </body>
     </html>
   );
 }

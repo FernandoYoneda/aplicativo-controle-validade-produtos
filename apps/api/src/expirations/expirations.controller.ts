@@ -20,6 +20,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateExpirationDto } from './dto/create-expiration.dto';
 import { CreateWriteOffDto } from './dto/create-write-off.dto';
+import { ListExpirationAlertsQueryDto } from './dto/list-expiration-alerts-query.dto';
 import {
   FilterExpirationsQueryDto,
   ListExpirationsQueryDto,
@@ -29,6 +30,10 @@ import {
   ListWriteOffsQueryDto,
   SearchWriteOffQueryDto,
 } from './dto/search-write-off-query.dto';
+import type {
+  ExpirationAlertAcknowledgement,
+  ExpirationAlertPage,
+} from './expiration-alert.types';
 import type {
   ExpirationOverview,
   ExpirationPage,
@@ -68,6 +73,15 @@ export class ExpirationsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<ExpirationOverview> {
     return this.expirationsService.findOverview(request.user);
+  }
+
+  @Get('alerts')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  findAlerts(
+    @Query() query: ListExpirationAlertsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationAlertPage> {
+    return this.expirationsService.findAlerts(query, request.user);
   }
 
   @Get('export')
@@ -133,6 +147,15 @@ export class ExpirationsController {
       createWriteOffDto,
       request.user,
     );
+  }
+
+  @Post(':id/alert-acknowledgements')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  acknowledgeAlert(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationAlertAcknowledgement> {
+    return this.expirationsService.acknowledgeAlert(id, request.user);
   }
 
   @Patch(':id')

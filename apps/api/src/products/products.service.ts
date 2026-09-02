@@ -27,6 +27,9 @@ export class ProductsService {
 
   async findPage(query: ListProductsQueryDto): Promise<ProductPage> {
     const search = query.search?.trim();
+    const embeddedProductCode = search
+      ? extractEmbeddedProductCodeFromEan13(search)
+      : null;
     const where: Prisma.ProductWhereInput | undefined = search
       ? {
           OR: [
@@ -35,6 +38,7 @@ export class ProductsService {
             { name: { contains: search, mode: 'insensitive' } },
             { brand: { contains: search, mode: 'insensitive' } },
             { category: { contains: search, mode: 'insensitive' } },
+            ...(embeddedProductCode ? [{ code: embeddedProductCode }] : []),
           ],
         }
       : undefined;

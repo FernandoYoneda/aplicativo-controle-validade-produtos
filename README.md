@@ -9,8 +9,11 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Administrador
 
 - autenticação por login ou e-mail;
+- menu lateral responsivo com acesso rápido às áreas permitidas, identificação do usuário, versão e saída;
 - painel consolidado com indicadores por período e registros prioritários;
 - alerta visual automático para registros vencidos ou próximos do vencimento;
+- central de alertas com busca, filtros por loja, situação e verificação;
+- registro do responsável e do horário da verificação de cada alerta;
 - cadastro, consulta, atualização, ativação e inativação de lojas;
 - cadastro, consulta, atualização, ativação e inativação de usuários de loja;
 - cadastro, consulta, atualização, ativação e inativação de produtos;
@@ -29,8 +32,10 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Usuário de loja
 
 - autenticação por login ou e-mail;
+- menu lateral responsivo com acesso rápido às áreas da operação, identificação do usuário, versão e saída;
 - painel com indicadores da própria unidade;
 - alerta visual de validades vencidas ou próximas do vencimento na própria unidade;
+- central de alertas restrita à própria unidade, com registro de verificação;
 - consulta e gerenciamento das validades vinculadas à sua loja;
 - listagem paginada com busca e filtros restritos à própria unidade;
 - exportação para Excel restrita aos registros da própria unidade;
@@ -41,11 +46,19 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 
 ### Baixa rápida de produtos
 
-O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e envia `Enter`; o sistema localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO).
+O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e finaliza com `Enter/CR` ou `Ctrl+J/LF`; a aplicação bloqueia o atalho de downloads do navegador, localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO). Essa proteção também funciona nos demais campos de leitura, como a busca de produto em `Nova validade`.
 
-Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, a busca valida o dígito verificador e também procura pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
+Durante a operação, a tela informa se o leitor está pronto, buscando ou se o produto foi localizado. Leituras duplicadas em sequência são ignoradas, códigos não encontrados ficam selecionados para serem substituídos pela próxima leitura e o foco retorna automaticamente ao campo após cada baixa. O som de confirmação é opcional e pode ser ativado no próprio modal.
+
+Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, as buscas de Produtos, Nova validade, Validades, Alertas e Baixa rápida validam o dígito verificador e também procuram pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
 
 A operação aceita quantidades parciais e os motivos `Vendido`, `Vencido` e `Descartado`. Quando o saldo chega a zero, o lote é inativado automaticamente e deixa de aparecer nos alertas ativos. Todas as baixas permanecem no histórico com data, usuário responsável, quantidade anterior e saldo restante.
+
+### Central de alertas
+
+A central reúne os lotes ativos vencidos ou com vencimento nos próximos 30 dias. A equipe pode pesquisar produtos, filtrar alertas pendentes ou verificados e registrar que um item foi conferido. A verificação guarda o usuário e o horário, sem alterar o lote nem realizar uma baixa de estoque.
+
+Quando um alerta de produto próximo do vencimento passa a vencido, ele volta a ficar pendente para uma nova verificação. Administradores visualizam todas as lojas; usuários de loja acessam somente a própria unidade. A central funciona independentemente dos alertas por e-mail e permanece disponível com `MAIL_ENABLED=false`.
 
 ### Importação de produtos
 
@@ -410,6 +423,69 @@ docker compose `
 ```
 
 Use `down -v` somente quando a exclusão definitiva dos dados for intencional.
+
+## Backup e restauração do banco
+
+Os backups utilizam o formato personalizado do PostgreSQL e são acompanhados por um arquivo SHA-256. O Docker Desktop e o serviço `postgres` da implantação precisam estar ativos.
+
+### Criar um backup manual
+
+```powershell
+.\scripts\backup-database.ps1
+```
+
+Os arquivos `.dump` e `.dump.sha256` são gravados em `backups`. O script rejeita arquivos vazios e valida a estrutura interna com `pg_restore` antes de concluir.
+
+### Testar uma restauração sem alterar o banco ativo
+
+Selecione o backup mais recente e execute o teste isolado:
+
+```powershell
+$latestBackup = Get-ChildItem .\backups\*.dump |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+
+.\scripts\test-database-restore.ps1 `
+  -BackupFile $latestBackup.FullName
+```
+
+O teste valida o SHA-256, cria um banco temporário com nome aleatório, restaura o backup completo, consulta as migrações e as tabelas essenciais e remove o banco temporário ao terminar. O banco ativo, a API e a aplicação web permanecem em funcionamento durante todo o processo.
+
+### Restaurar o banco ativo
+
+```powershell
+.\scripts\restore-database.ps1 `
+  -BackupFile .\backups\validade-AAAAMMDD-HHMMSSmmm.dump
+```
+
+A restauração exige a confirmação literal `RESTAURAR`, valida o checksum e a estrutura do arquivo e cria um backup automático do estado atual em `backups\pre-restore` antes de substituir os dados. Se a restauração falhar após a limpeza do banco, a API e a interface permanecem paradas para evitar novas gravações.
+
+### Agendar backups diários
+
+```powershell
+.\scripts\manage-database-backup-task.ps1 `
+  -Operation Install `
+  -DailyAt "02:00" `
+  -RetentionDays 30 `
+  -MinimumBackups 7
+```
+
+Cada execução agendada cria o backup, valida seu checksum, realiza uma restauração isolada completa e somente então aplica a retenção. Backups dos últimos 30 dias são preservados e nunca são mantidos menos de sete arquivos com os valores do exemplo.
+
+Consulte ou execute a tarefa manualmente:
+
+```powershell
+.\scripts\manage-database-backup-task.ps1 -Operation Status
+.\scripts\manage-database-backup-task.ps1 -Operation RunNow
+```
+
+Para remover somente a tarefa, preservando todos os backups:
+
+```powershell
+.\scripts\manage-database-backup-task.ps1 -Operation Remove
+```
+
+A tarefa utiliza o Docker Desktop da sessão do usuário. O computador precisa estar ligado, com o usuário conectado e o Docker ativo no horário configurado.
 
 ## Instalação
 

@@ -6,12 +6,17 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import * as XLSX from '@e965/xlsx';
 import {
+  ExpirationAlertType,
   ProductLotWriteOffReason,
   UserRole,
 } from '../../generated/prisma/enums';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import { ExpirationNotificationsService } from '../notifications/expiration-notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  ExpirationAlertReviewFilter,
+  ExpirationAlertStatusFilter,
+} from './dto/list-expiration-alerts-query.dto';
 import { ExpirationStatusFilter } from './dto/list-expirations-query.dto';
 import {
   type ExpirationRecord,
@@ -54,12 +59,16 @@ describe('ExpirationsService', () => {
     },
     productLot: {
       count: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
     productLotWriteOff: {
       findMany: jest.fn(),
+    },
+    expirationAlertAcknowledgement: {
+      upsert: jest.fn(),
     },
     $transaction: jest.fn(executeTransaction),
   };
@@ -138,6 +147,125 @@ describe('ExpirationsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('should list and summarize active expiration alerts', async () => {
+    const expiredAlert = {
+      ...expiration,
+      expirationDate: new Date('2000-01-01T00:00:00.000Z'),
+      alertAcknowledgements: [
+        {
+          id: '00000000-0000-4000-8000-000000000701',
+          alertType: ExpirationAlertType.EXPIRED,
+          acknowledgedAt: new Date('2026-09-02T12:00:00.000Z'),
+          user: { id: adminUser.id, name: adminUser.name },
+        },
+      ],
+    };
+    prismaServiceMock.productLot.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([expiredAlert]);
+
+    const result = await service.findAlerts(
+      {
+        page: 1,
+        pageSize: 25,
+        status: ExpirationAlertStatusFilter.ALL,
+        review: ExpirationAlertReviewFilter.ALL,
+      },
+      adminUser,
+    );
+
+    expect(result.summary).toEqual({
+      total: 1,
+      expired: 1,
+      upcoming: 0,
+      pending: 0,
+      reviewed: 1,
+    });
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        id: expirationId,
+        alertType: ExpirationAlertType.EXPIRED,
+        acknowledgement: expiredAlert.alertAcknowledgements[0],
+      }),
+    );
+  });
+
+  it('should find alerts by the product code embedded in a valid EAN-13', async () => {
+    prismaServiceMock.productLot.count.mockResolvedValue(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([]);
+
+    await service.findAlerts(
+      {
+        page: 1,
+        pageSize: 25,
+        search: '7891033859474',
+        status: ExpirationAlertStatusFilter.ALL,
+        review: ExpirationAlertReviewFilter.ALL,
+      },
+      adminUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        AND: [
+          {
+            AND: [
+              {},
+              expect.objectContaining({ isActive: true }),
+              {
+                OR: expect.arrayContaining([
+                  {
+                    storeProduct: {
+                      product: { code: '85947' },
+                    },
+                  },
+                ]) as unknown[],
+              },
+            ],
+          },
+          {},
+          {},
+        ],
+      },
+    });
+  });
+
+  it('should acknowledge the current alert for the authenticated user', async () => {
+    const acknowledgement = {
+      id: '00000000-0000-4000-8000-000000000701',
+      acknowledgedAt: new Date('2026-09-02T12:00:00.000Z'),
+      user: { id: storeUser.id, name: storeUser.name },
+    };
+    prismaServiceMock.productLot.findFirst.mockResolvedValue({
+      id: expirationId,
+      expirationDate: new Date('2000-01-01T00:00:00.000Z'),
+    });
+    prismaServiceMock.expirationAlertAcknowledgement.upsert.mockResolvedValue(
+      acknowledgement,
+    );
+
+    await expect(
+      service.acknowledgeAlert(expirationId, storeUser),
+    ).resolves.toEqual(acknowledgement);
+    expect(
+      prismaServiceMock.expirationAlertAcknowledgement.upsert,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          productLotId_userId_alertType: {
+            productLotId: expirationId,
+            userId: storeUser.id,
+            alertType: ExpirationAlertType.EXPIRED,
+          },
+        },
+      }),
+    );
   });
 
   it('should list all expiration records for an administrator', async () => {
@@ -393,6 +521,39 @@ describe('ExpirationsService', () => {
         storeProduct: {
           storeId,
         },
+      },
+    });
+  });
+
+  it('should find expirations by the product code embedded in a valid EAN-13', async () => {
+    prismaServiceMock.productLot.count.mockResolvedValue(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([]);
+
+    await service.findPage(
+      {
+        page: 1,
+        pageSize: 25,
+        search: '7891033859474',
+        status: ExpirationStatusFilter.ALL,
+      },
+      adminUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        AND: [
+          {},
+          {
+            OR: expect.arrayContaining([
+              {
+                storeProduct: {
+                  product: { code: '85947' },
+                },
+              },
+            ]) as unknown[],
+          },
+          {},
+        ],
       },
     });
   });

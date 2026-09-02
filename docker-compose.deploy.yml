@@ -80,6 +80,7 @@ services:
     init: true
     environment:
       NODE_ENV: production
+      APP_VERSION: ${APP_VERSION:-latest}
       API_URL: http://api:3001
       HOSTNAME: 0.0.0.0
       PORT: 3100

@@ -69,8 +69,16 @@ try {
     $PSScriptRoot `
     "backup-database.ps1"
 
+  $restoreTestScriptPath = Join-Path `
+    $PSScriptRoot `
+    "test-database-restore.ps1"
+
   if (-not (Test-Path -LiteralPath $backupScriptPath -PathType Leaf)) {
     throw "Script de backup nao encontrado: $backupScriptPath"
+  }
+
+  if (-not (Test-Path -LiteralPath $restoreTestScriptPath -PathType Leaf)) {
+    throw "Script de teste de restauracao nao encontrado: $restoreTestScriptPath"
   }
 
   $envFilePath = Resolve-ProjectPath `
@@ -205,6 +213,49 @@ try {
   }
 
   Write-BackupLog "Novo backup confirmado: $($newBackup.FullName)"
+
+  Write-BackupLog "Iniciando teste de restauracao isolada."
+
+  $restoreTestArguments = @(
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    $restoreTestScriptPath,
+    "-BackupFile",
+    $newBackup.FullName,
+    "-EnvFile",
+    $envFilePath,
+    "-ComposeFile",
+    $composeFilePath
+  )
+
+  $previousErrorActionPreference = $ErrorActionPreference
+
+  try {
+    $ErrorActionPreference = "Continue"
+
+    $restoreTestOutput = & $powerShellExecutable @restoreTestArguments 2>&1
+    $restoreTestExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  foreach ($outputLine in @($restoreTestOutput)) {
+    $outputText = [string]$outputLine
+
+    if ([string]::IsNullOrWhiteSpace($outputText)) {
+      continue
+    }
+
+    Write-BackupLog $outputText
+  }
+
+  if ($restoreTestExitCode -ne 0) {
+    throw "O teste de restauracao do novo backup falhou."
+  }
+
+  Write-BackupLog "Teste de restauracao isolada aprovado."
 
   $cutoffDate = (Get-Date).AddDays(-$RetentionDays)
 

@@ -9,6 +9,7 @@ import {
 import * as XLSX from '@e965/xlsx';
 import type { Prisma } from '../../generated/prisma/client';
 import {
+  ExpirationAlertType,
   ProductLotWriteOffReason,
   UserRole,
 } from '../../generated/prisma/enums';
@@ -19,6 +20,11 @@ import { extractEmbeddedProductCodeFromEan13 } from '../products/product-code-ma
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
 import type { CreateWriteOffDto } from './dto/create-write-off.dto';
 import {
+  ExpirationAlertReviewFilter,
+  ExpirationAlertStatusFilter,
+  type ListExpirationAlertsQueryDto,
+} from './dto/list-expiration-alerts-query.dto';
+import {
   ExpirationStatusFilter,
   type FilterExpirationsQueryDto,
   type ListExpirationsQueryDto,
@@ -28,6 +34,10 @@ import type {
   ListWriteOffsQueryDto,
   SearchWriteOffQueryDto,
 } from './dto/search-write-off-query.dto';
+import type {
+  ExpirationAlertAcknowledgement,
+  ExpirationAlertPage,
+} from './expiration-alert.types';
 import type {
   ExpirationOverview,
   ExpirationPage,
@@ -191,6 +201,173 @@ export class ExpirationsService {
     ]);
 
     return { summary, priorityItems };
+  }
+
+  async findAlerts(
+    query: ListExpirationAlertsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationAlertPage> {
+    const accessWhere = this.getAccessWhere(user, query.storeId);
+    const dateLimits = this.getExpirationDateLimits();
+    const baseWhere = this.getAlertBaseWhere(
+      query.search,
+      accessWhere,
+      dateLimits,
+    );
+    const statusWhere = this.getAlertStatusWhere(query.status, dateLimits);
+    const reviewWhere = this.getAlertReviewWhere(query.review, dateLimits);
+    const where: Prisma.ProductLotWhereInput = {
+      AND: [baseWhere, statusWhere, reviewWhere],
+    };
+    const [totalItems, expired, upcoming, pending, reviewed] =
+      await Promise.all([
+        this.prisma.productLot.count({ where }),
+        this.prisma.productLot.count({
+          where: {
+            AND: [
+              baseWhere,
+              this.getAlertStatusWhere(
+                ExpirationAlertStatusFilter.EXPIRED,
+                dateLimits,
+              ),
+            ],
+          },
+        }),
+        this.prisma.productLot.count({
+          where: {
+            AND: [
+              baseWhere,
+              this.getAlertStatusWhere(
+                ExpirationAlertStatusFilter.UPCOMING,
+                dateLimits,
+              ),
+            ],
+          },
+        }),
+        this.prisma.productLot.count({
+          where: {
+            AND: [
+              baseWhere,
+              this.getAlertReviewWhere(
+                ExpirationAlertReviewFilter.PENDING,
+                dateLimits,
+              ),
+            ],
+          },
+        }),
+        this.prisma.productLot.count({
+          where: {
+            AND: [
+              baseWhere,
+              this.getAlertReviewWhere(
+                ExpirationAlertReviewFilter.REVIEWED,
+                dateLimits,
+              ),
+            ],
+          },
+        }),
+      ]);
+    const totalPages = Math.max(1, Math.ceil(totalItems / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const records = await this.prisma.productLot.findMany({
+      where,
+      select: {
+        ...expirationSelect,
+        alertAcknowledgements: {
+          select: {
+            id: true,
+            alertType: true,
+            acknowledgedAt: true,
+            user: { select: { id: true, name: true } },
+          },
+          orderBy: { acknowledgedAt: 'desc' },
+        },
+      },
+      orderBy: [{ expirationDate: 'asc' }, { createdAt: 'asc' }],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+    });
+    const items = records.map((record) => {
+      const { alertAcknowledgements, ...expiration } = record;
+      const alertType =
+        record.expirationDate < dateLimits.today
+          ? ExpirationAlertType.EXPIRED
+          : ExpirationAlertType.UPCOMING;
+      const acknowledgement =
+        alertAcknowledgements.find((item) => item.alertType === alertType) ??
+        null;
+
+      return { ...expiration, alertType, acknowledgement };
+    });
+    return {
+      items,
+      pagination: {
+        page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages,
+      },
+      summary: {
+        total: expired + upcoming,
+        expired,
+        upcoming,
+        pending,
+        reviewed,
+      },
+    };
+  }
+
+  async acknowledgeAlert(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationAlertAcknowledgement> {
+    const dateLimits = this.getExpirationDateLimits();
+    const expiration = await this.prisma.productLot.findFirst({
+      where: {
+        AND: [
+          { id },
+          this.getAccessWhere(user),
+          {
+            isActive: true,
+            quantity: { gt: 0 },
+            expirationDate: { lte: dateLimits.upcomingLimit },
+          },
+        ],
+      },
+      select: { id: true, expirationDate: true },
+    });
+
+    if (!expiration) {
+      throw new NotFoundException(
+        'Alerta de validade não encontrado ou não está mais ativo.',
+      );
+    }
+
+    const alertType =
+      expiration.expirationDate < dateLimits.today
+        ? ExpirationAlertType.EXPIRED
+        : ExpirationAlertType.UPCOMING;
+
+    return this.prisma.expirationAlertAcknowledgement.upsert({
+      where: {
+        productLotId_userId_alertType: {
+          productLotId: expiration.id,
+          userId: user.id,
+          alertType,
+        },
+      },
+      create: {
+        productLotId: expiration.id,
+        userId: user.id,
+        alertType,
+      },
+      update: { acknowledgedAt: new Date() },
+      select: {
+        id: true,
+        acknowledgedAt: true,
+        user: { select: { id: true, name: true } },
+      },
+    });
   }
 
   async exportSpreadsheet(
@@ -672,6 +849,9 @@ export class ExpirationsService {
     dateLimits: ExpirationDateLimits,
   ): Prisma.ProductLotWhereInput {
     const search = query.search?.trim();
+    const embeddedProductCode = search
+      ? extractEmbeddedProductCodeFromEan13(search)
+      : null;
     const searchWhere: Prisma.ProductLotWhereInput | undefined = search
       ? {
           OR: [
@@ -712,6 +892,15 @@ export class ExpirationsService {
                 },
               },
             },
+            ...(embeddedProductCode
+              ? [
+                  {
+                    storeProduct: {
+                      product: { code: embeddedProductCode },
+                    },
+                  },
+                ]
+              : []),
           ],
         }
       : undefined;
@@ -721,6 +910,153 @@ export class ExpirationsService {
         accessWhere,
         ...(searchWhere ? [searchWhere] : []),
         this.getStatusWhere(query.status, dateLimits),
+      ],
+    };
+  }
+
+  private getAlertBaseWhere(
+    searchValue: string | undefined,
+    accessWhere: Prisma.ProductLotWhereInput,
+    dateLimits: ExpirationDateLimits,
+  ): Prisma.ProductLotWhereInput {
+    const search = searchValue?.trim();
+    const embeddedProductCode = search
+      ? extractEmbeddedProductCodeFromEan13(search)
+      : null;
+
+    return {
+      AND: [
+        accessWhere,
+        {
+          isActive: true,
+          quantity: { gt: 0 },
+          expirationDate: { lte: dateLimits.upcomingLimit },
+        },
+        ...(search
+          ? [
+              {
+                OR: [
+                  {
+                    batchNumber: {
+                      contains: search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                  {
+                    storeProduct: {
+                      product: {
+                        code: {
+                          contains: search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    storeProduct: {
+                      product: {
+                        barcode: {
+                          contains: search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    storeProduct: {
+                      product: {
+                        name: {
+                          contains: search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    storeProduct: {
+                      store: {
+                        code: {
+                          contains: search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                  },
+                  {
+                    storeProduct: {
+                      store: {
+                        name: {
+                          contains: search,
+                          mode: 'insensitive' as const,
+                        },
+                      },
+                    },
+                  },
+                  ...(embeddedProductCode
+                    ? [
+                        {
+                          storeProduct: {
+                            product: { code: embeddedProductCode },
+                          },
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  private getAlertStatusWhere(
+    status: ExpirationAlertStatusFilter,
+    dateLimits: ExpirationDateLimits,
+  ): Prisma.ProductLotWhereInput {
+    if (status === ExpirationAlertStatusFilter.EXPIRED) {
+      return { expirationDate: { lt: dateLimits.today } };
+    }
+
+    if (status === ExpirationAlertStatusFilter.UPCOMING) {
+      return {
+        expirationDate: {
+          gte: dateLimits.today,
+          lte: dateLimits.upcomingLimit,
+        },
+      };
+    }
+
+    return {};
+  }
+
+  private getAlertReviewWhere(
+    review: ExpirationAlertReviewFilter,
+    dateLimits: ExpirationDateLimits,
+  ): Prisma.ProductLotWhereInput {
+    if (review === ExpirationAlertReviewFilter.ALL) {
+      return {};
+    }
+
+    const relationFilter =
+      review === ExpirationAlertReviewFilter.REVIEWED ? 'some' : 'none';
+
+    return {
+      OR: [
+        {
+          expirationDate: { lt: dateLimits.today },
+          alertAcknowledgements: {
+            [relationFilter]: { alertType: ExpirationAlertType.EXPIRED },
+          },
+        },
+        {
+          expirationDate: {
+            gte: dateLimits.today,
+            lte: dateLimits.upcomingLimit,
+          },
+          alertAcknowledgements: {
+            [relationFilter]: { alertType: ExpirationAlertType.UPCOMING },
+          },
+        },
       ],
     };
   }
