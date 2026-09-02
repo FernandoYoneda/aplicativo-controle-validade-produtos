@@ -11,6 +11,8 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - autenticação por login ou e-mail;
 - painel consolidado com indicadores por período e registros prioritários;
 - alerta visual automático para registros vencidos ou próximos do vencimento;
+- central de alertas com busca, filtros por loja, situação e verificação;
+- registro do responsável e do horário da verificação de cada alerta;
 - cadastro, consulta, atualização, ativação e inativação de lojas;
 - cadastro, consulta, atualização, ativação e inativação de usuários de loja;
 - cadastro, consulta, atualização, ativação e inativação de produtos;
@@ -31,6 +33,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - autenticação por login ou e-mail;
 - painel com indicadores da própria unidade;
 - alerta visual de validades vencidas ou próximas do vencimento na própria unidade;
+- central de alertas restrita à própria unidade, com registro de verificação;
 - consulta e gerenciamento das validades vinculadas à sua loja;
 - listagem paginada com busca e filtros restritos à própria unidade;
 - exportação para Excel restrita aos registros da própria unidade;
@@ -46,6 +49,12 @@ O botão `Baixa rápida` da área de Validades aceita leitores USB configurados 
 Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, a busca valida o dígito verificador e também procura pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
 
 A operação aceita quantidades parciais e os motivos `Vendido`, `Vencido` e `Descartado`. Quando o saldo chega a zero, o lote é inativado automaticamente e deixa de aparecer nos alertas ativos. Todas as baixas permanecem no histórico com data, usuário responsável, quantidade anterior e saldo restante.
+
+### Central de alertas
+
+A central reúne os lotes ativos vencidos ou com vencimento nos próximos 30 dias. A equipe pode pesquisar produtos, filtrar alertas pendentes ou verificados e registrar que um item foi conferido. A verificação guarda o usuário e o horário, sem alterar o lote nem realizar uma baixa de estoque.
+
+Quando um alerta de produto próximo do vencimento passa a vencido, ele volta a ficar pendente para uma nova verificação. Administradores visualizam todas as lojas; usuários de loja acessam somente a própria unidade. A central funciona independentemente dos alertas por e-mail e permanece disponível com `MAIL_ENABLED=false`.
 
 ### Importação de produtos
 

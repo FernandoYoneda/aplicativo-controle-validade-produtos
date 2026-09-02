@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "../../components/auth/logout-button";
+import { AppFooter } from "../../components/layout/app-footer";
 import { StoresManager } from "../../components/stores/stores-manager";
 import { getAuthenticatedUser } from "../../lib/auth";
 import { getStores } from "../../lib/stores";
@@ -149,9 +150,7 @@ export default async function StoresPage() {
           )}
         </section>
 
-        <footer className="mt-10 border-t border-[var(--casabella-border)] py-6 text-center text-xs text-[var(--casabella-muted)]">
-          Grupo CasaBella Fragrâncias · Sistema interno de gestão
-        </footer>
+        <AppFooter />
       </div>
     </main>
   );

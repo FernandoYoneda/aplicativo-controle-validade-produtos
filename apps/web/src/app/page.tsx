@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { LogoutButton } from "../components/auth/logout-button";
 import { ExpirationOverview } from "../components/dashboard/expiration-overview";
+import { AppFooter } from "../components/layout/app-footer";
 import { getAuthenticatedUser } from "../lib/auth";
 import { getExpirationOverview } from "../lib/expirations";
 import type { AuthenticatedUser } from "../types/auth";
@@ -49,6 +50,15 @@ const modules = [
       "Acompanhe lotes, quantidades e datas de validade dos produtos por loja.",
     status: "Disponível",
     href: "/expirations",
+    adminOnly: false,
+  },
+  {
+    number: "05",
+    title: "Alertas",
+    description:
+      "Consulte produtos vencidos ou próximos do vencimento e registre a verificação.",
+    status: "Disponível",
+    href: "/alerts",
     adminOnly: false,
   },
 ];
@@ -215,9 +225,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <footer className="mt-10 border-t border-[var(--casabella-border)] py-6 text-center text-xs text-[var(--casabella-muted)]">
-          Grupo CasaBella Fragrâncias · Sistema interno de gestão
-        </footer>
+        <AppFooter />
       </div>
     </main>
   );
