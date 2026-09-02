@@ -212,9 +212,9 @@ export function ExpirationOverview({
                     ? "bg-red-700 hover:bg-red-800"
                     : "bg-amber-700 hover:bg-amber-800"
                 }`}
-                href="/expirations"
+                href="/alerts"
               >
-                Ver validades
+                Abrir central de alertas
               </Link>
             </div>
           ) : null}
@@ -250,14 +250,12 @@ export function ExpirationOverview({
                 </p>
               </div>
 
-              {priorityExpirations.length > 0 ? (
-                <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700">
-                  {priorityExpirations.length}{" "}
-                  {priorityExpirations.length === 1
-                    ? "prioridade"
-                    : "prioridades"}
-                </span>
-              ) : null}
+              <Link
+                className="text-sm font-semibold text-[var(--casabella-teal)] hover:text-[var(--casabella-teal-dark)]"
+                href="/alerts"
+              >
+                Ver todos <span aria-hidden="true">→</span>
+              </Link>
             </div>
 
             {priorityExpirations.length === 0 ? (

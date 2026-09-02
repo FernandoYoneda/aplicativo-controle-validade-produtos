@@ -41,6 +41,13 @@ enum ExpirationEmailDeliveryStatus {
   @@map("expiration_email_delivery_status")
 }
 
+enum ExpirationAlertType {
+  UPCOMING
+  EXPIRED
+
+  @@map("expiration_alert_type")
+}
+
 model Store {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(20)
@@ -70,6 +77,7 @@ model User {
 
   store               Store?               @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   productLotWriteOffs ProductLotWriteOff[]
+  expirationAlertAcknowledgements ExpirationAlertAcknowledgement[]
 
   @@index([storeId])
   @@index([role])
@@ -126,6 +134,7 @@ model ProductLot {
   storeProduct StoreProduct         @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   writeOffs    ProductLotWriteOff[]
   emailDeliveries ExpirationEmailDelivery[]
+  alertAcknowledgements ExpirationAlertAcknowledgement[]
 
   @@index([storeProductId, expirationDate])
   @@index([expirationDate])
@@ -176,4 +185,20 @@ model ExpirationEmailDelivery {
   @@index([productLotId, createdAt])
   @@index([writeOffId, createdAt])
   @@map("expiration_email_deliveries")
+}
+
+model ExpirationAlertAcknowledgement {
+  id             String              @id @default(uuid()) @db.Uuid
+  productLotId   String              @map("product_lot_id") @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  alertType      ExpirationAlertType @map("alert_type")
+  acknowledgedAt DateTime            @default(now()) @map("acknowledged_at") @db.Timestamptz(3)
+
+  productLot ProductLot @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([productLotId, userId, alertType])
+  @@index([productLotId, alertType, acknowledgedAt])
+  @@index([userId, acknowledgedAt])
+  @@map("expiration_alert_acknowledgements")
 }

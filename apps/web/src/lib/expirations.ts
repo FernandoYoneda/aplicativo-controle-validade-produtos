@@ -1,6 +1,7 @@
 import "server-only";
 
 import type {
+  ExpirationAlertPage,
   ExpirationOverview,
   ExpirationPage,
   ExpirationRecord,
@@ -89,4 +90,30 @@ export async function getExpirationOverview(): Promise<ExpirationOverview | null
   }
 
   return (await response.json()) as ExpirationOverview;
+}
+
+export async function getExpirationAlerts(): Promise<ExpirationAlertPage | null> {
+  const accessToken = await getAccessToken();
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const response = await fetch(`${getApiUrl()}/expirations/alerts`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Não foi possível consultar a central de alertas: ${response.status}.`,
+    );
+  }
+
+  return (await response.json()) as ExpirationAlertPage;
 }

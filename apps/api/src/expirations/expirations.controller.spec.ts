@@ -7,6 +7,10 @@ import {
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user';
 import {
+  ExpirationAlertReviewFilter,
+  ExpirationAlertStatusFilter,
+} from './dto/list-expiration-alerts-query.dto';
+import {
   ExpirationStatusFilter,
   type ListExpirationsQueryDto,
 } from './dto/list-expirations-query.dto';
@@ -71,6 +75,8 @@ describe('ExpirationsController', () => {
     findAll: jest.fn(),
     findPage: jest.fn(),
     findOverview: jest.fn(),
+    findAlerts: jest.fn(),
+    acknowledgeAlert: jest.fn(),
     exportSpreadsheet: jest.fn(),
     searchWriteOffCandidates: jest.fn(),
     findWriteOffs: jest.fn(),
@@ -163,6 +169,44 @@ describe('ExpirationsController', () => {
 
     await expect(controller.findOverview(request)).resolves.toEqual(overview);
     expect(expirationsServiceMock.findOverview).toHaveBeenCalledWith(
+      authenticatedUser,
+    );
+  });
+
+  it('should delegate expiration alerts to the service', async () => {
+    const query = {
+      page: 1,
+      pageSize: 25,
+      status: ExpirationAlertStatusFilter.ALL,
+      review: ExpirationAlertReviewFilter.PENDING,
+    };
+    const page = {
+      items: [],
+      pagination: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 },
+      summary: { total: 0, expired: 0, upcoming: 0, pending: 0, reviewed: 0 },
+    };
+    expirationsServiceMock.findAlerts.mockResolvedValue(page);
+
+    await expect(controller.findAlerts(query, request)).resolves.toEqual(page);
+    expect(expirationsServiceMock.findAlerts).toHaveBeenCalledWith(
+      query,
+      authenticatedUser,
+    );
+  });
+
+  it('should delegate alert acknowledgement to the service', async () => {
+    const acknowledgement = {
+      id: '00000000-0000-4000-8000-000000000701',
+      acknowledgedAt: new Date('2026-09-02T12:00:00.000Z'),
+      user: { id: authenticatedUser.id, name: authenticatedUser.name },
+    };
+    expirationsServiceMock.acknowledgeAlert.mockResolvedValue(acknowledgement);
+
+    await expect(
+      controller.acknowledgeAlert(expirationId, request),
+    ).resolves.toEqual(acknowledgement);
+    expect(expirationsServiceMock.acknowledgeAlert).toHaveBeenCalledWith(
+      expirationId,
       authenticatedUser,
     );
   });

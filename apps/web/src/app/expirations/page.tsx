@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { LogoutButton } from "../../components/auth/logout-button";
 import { ExpirationsManager } from "../../components/expirations/expirations-manager";
+import { AppFooter } from "../../components/layout/app-footer";
 import { getAuthenticatedUser } from "../../lib/auth";
 import { getExpirationPage } from "../../lib/expirations";
 import { getStores } from "../../lib/stores";
@@ -159,9 +160,7 @@ export default async function ExpirationsPage() {
           )}
         </section>
 
-        <footer className="mt-10 border-t border-[var(--casabella-border)] py-6 text-center text-xs text-[var(--casabella-muted)]">
-          Grupo CasaBella Fragrâncias · Sistema interno de gestão
-        </footer>
+        <AppFooter />
       </div>
     </main>
   );

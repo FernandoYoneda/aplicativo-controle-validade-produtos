@@ -71,6 +71,41 @@ export interface ExpirationOverview {
   priorityItems: ExpirationRecord[];
 }
 
+export type ExpirationAlertType = "UPCOMING" | "EXPIRED";
+export type ExpirationAlertStatusFilter = "all" | "expired" | "upcoming";
+export type ExpirationAlertReviewFilter = "all" | "pending" | "reviewed";
+
+export interface ExpirationAlertAcknowledgement {
+  id: string;
+  acknowledgedAt: string;
+  user: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface ExpirationAlertItem extends ExpirationRecord {
+  alertType: ExpirationAlertType;
+  acknowledgement: ExpirationAlertAcknowledgement | null;
+}
+
+export interface ExpirationAlertPage {
+  items: ExpirationAlertItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  summary: {
+    total: number;
+    expired: number;
+    upcoming: number;
+    pending: number;
+    reviewed: number;
+  };
+}
+
 export interface CreateExpirationPayload {
   productId: string;
   storeId?: string;
