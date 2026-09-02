@@ -424,6 +424,69 @@ docker compose `
 
 Use `down -v` somente quando a exclusão definitiva dos dados for intencional.
 
+## Backup e restauração do banco
+
+Os backups utilizam o formato personalizado do PostgreSQL e são acompanhados por um arquivo SHA-256. O Docker Desktop e o serviço `postgres` da implantação precisam estar ativos.
+
+### Criar um backup manual
+
+```powershell
+.\scripts\backup-database.ps1
+```
+
+Os arquivos `.dump` e `.dump.sha256` são gravados em `backups`. O script rejeita arquivos vazios e valida a estrutura interna com `pg_restore` antes de concluir.
+
+### Testar uma restauração sem alterar o banco ativo
+
+Selecione o backup mais recente e execute o teste isolado:
+
+```powershell
+$latestBackup = Get-ChildItem .\backups\*.dump |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+
+.\scripts\test-database-restore.ps1 `
+  -BackupFile $latestBackup.FullName
+```
+
+O teste valida o SHA-256, cria um banco temporário com nome aleatório, restaura o backup completo, consulta as migrações e as tabelas essenciais e remove o banco temporário ao terminar. O banco ativo, a API e a aplicação web permanecem em funcionamento durante todo o processo.
+
+### Restaurar o banco ativo
+
+```powershell
+.\scripts\restore-database.ps1 `
+  -BackupFile .\backups\validade-AAAAMMDD-HHMMSSmmm.dump
+```
+
+A restauração exige a confirmação literal `RESTAURAR`, valida o checksum e a estrutura do arquivo e cria um backup automático do estado atual em `backups\pre-restore` antes de substituir os dados. Se a restauração falhar após a limpeza do banco, a API e a interface permanecem paradas para evitar novas gravações.
+
+### Agendar backups diários
+
+```powershell
+.\scripts\manage-database-backup-task.ps1 `
+  -Operation Install `
+  -DailyAt "02:00" `
+  -RetentionDays 30 `
+  -MinimumBackups 7
+```
+
+Cada execução agendada cria o backup, valida seu checksum, realiza uma restauração isolada completa e somente então aplica a retenção. Backups dos últimos 30 dias são preservados e nunca são mantidos menos de sete arquivos com os valores do exemplo.
+
+Consulte ou execute a tarefa manualmente:
+
+```powershell
+.\scripts\manage-database-backup-task.ps1 -Operation Status
+.\scripts\manage-database-backup-task.ps1 -Operation RunNow
+```
+
+Para remover somente a tarefa, preservando todos os backups:
+
+```powershell
+.\scripts\manage-database-backup-task.ps1 -Operation Remove
+```
+
+A tarefa utiliza o Docker Desktop da sessão do usuário. O computador precisa estar ligado, com o usuário conectado e o Docker ativo no horário configurado.
+
 ## Instalação
 
 Instale todas as dependências do monorepo:
