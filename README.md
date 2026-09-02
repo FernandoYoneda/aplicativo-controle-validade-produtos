@@ -44,7 +44,9 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 
 ### Baixa rápida de produtos
 
-O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e envia `Enter`; o sistema localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO).
+O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e finaliza com `Enter/CR` ou `Ctrl+J/LF`; a aplicação bloqueia o atalho de downloads do navegador, localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO). Essa proteção também funciona nos demais campos de leitura, como a busca de produto em `Nova validade`.
+
+Durante a operação, a tela informa se o leitor está pronto, buscando ou se o produto foi localizado. Leituras duplicadas em sequência são ignoradas, códigos não encontrados ficam selecionados para serem substituídos pela próxima leitura e o foco retorna automaticamente ao campo após cada baixa. O som de confirmação é opcional e pode ser ativado no próprio modal.
 
 Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, a busca valida o dígito verificador e também procura pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
 

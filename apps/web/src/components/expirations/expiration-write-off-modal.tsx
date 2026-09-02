@@ -23,6 +23,30 @@ const reasonLabels: Record<ExpirationWriteOffReason, string> = {
   DISCARDED: "Descartado",
 };
 
+const duplicateScanWindowMilliseconds = 1_200;
+
+function playFeedbackTone(type: "success" | "error") {
+  try {
+    const audioContext = new AudioContext();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const now = audioContext.currentTime;
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(type === "success" ? 880 : 220, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.17);
+    oscillator.addEventListener("ended", () => void audioContext.close());
+  } catch {
+    // O feedback visual continua disponível quando o navegador bloqueia áudio.
+  }
+}
+
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(
     new Date(value),
@@ -48,6 +72,8 @@ export function ExpirationWriteOffModal({
   onSaved,
 }: ExpirationWriteOffModalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchRequestInProgressRef = useRef(false);
+  const lastScanRef = useRef({ value: "", timestamp: 0 });
   const [tab, setTab] = useState<"write-off" | "history">("write-off");
   const [search, setSearch] = useState("");
   const [storeId, setStoreId] = useState("");
@@ -62,6 +88,7 @@ export function ExpirationWriteOffModal({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [soundEnabled, setSoundEnabled] = useState(false);
 
   const selected = candidates.find((item) => item.id === selectedId) ?? null;
 
@@ -77,12 +104,67 @@ export function ExpirationWriteOffModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  function focusSearch(selectContent = false) {
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      if (selectContent) searchInputRef.current?.select();
+    }, 0);
+  }
+
+  function provideFeedback(type: "success" | "error") {
+    if (soundEnabled) playFeedbackTone(type);
+  }
+
+  function resetSearch() {
+    setSearch("");
+    setCandidates([]);
+    setSelectedId("");
+    setQuantity(1);
+    setNotes("");
+  }
+
+  function changeStore(value: string) {
+    setStoreId(value);
+    resetSearch();
+    setError("");
+    setSuccess("");
+    lastScanRef.current = { value: "", timestamp: 0 };
+    focusSearch();
+  }
+
   async function findCandidates() {
     const normalizedSearch = search.trim();
     if (!normalizedSearch) {
       setError("Leia o código de barras ou informe um produto.");
+      provideFeedback("error");
+      focusSearch();
       return;
     }
+
+    if (searchRequestInProgressRef.current) return;
+
+    const now = Date.now();
+    const lastScan = lastScanRef.current;
+    if (
+      lastScan.value === normalizedSearch &&
+      now - lastScan.timestamp < duplicateScanWindowMilliseconds
+    ) {
+      setSuccess("");
+      setError(
+        "Leitura repetida ignorada. Aguarde um instante ou confirme a baixa atual.",
+      );
+      focusSearch(true);
+      return;
+    }
+
+    if (lastScan.value && lastScan.value !== normalizedSearch) {
+      setCandidates([]);
+      setSelectedId("");
+      setQuantity(1);
+    }
+
+    lastScanRef.current = { value: normalizedSearch, timestamp: now };
+    searchRequestInProgressRef.current = true;
     setIsSearching(true);
     setError("");
     setSuccess("");
@@ -102,7 +184,21 @@ export function ExpirationWriteOffModal({
       setCandidates(records);
       setSelectedId(records[0]?.id ?? "");
       setQuantity(1);
-      if (records.length === 0) setError("Nenhum lote ativo foi encontrado.");
+      if (records.length === 0) {
+        setError(
+          `Nenhum lote ativo foi encontrado para “${normalizedSearch}”. Confira o código e a loja selecionada.`,
+        );
+        provideFeedback("error");
+        focusSearch(true);
+      } else {
+        setSuccess(
+          records.length === 1
+            ? "Produto localizado. Confira os dados e confirme a baixa."
+            : `${records.length} lotes localizados. O que vence primeiro já está selecionado.`,
+        );
+        provideFeedback("success");
+        focusSearch(true);
+      }
     } catch (requestError) {
       setCandidates([]);
       setSelectedId("");
@@ -111,7 +207,10 @@ export function ExpirationWriteOffModal({
           ? requestError.message
           : "Falha na busca.",
       );
+      provideFeedback("error");
+      focusSearch(true);
     } finally {
+      searchRequestInProgressRef.current = false;
       setIsSearching(false);
     }
   }
@@ -172,18 +271,17 @@ export function ExpirationWriteOffModal({
           ? "Baixa concluída. O lote foi encerrado e saiu dos alertas."
           : `Baixa concluída. Restam ${result.expiration.quantity} unidades no lote.`,
       );
-      setSearch("");
-      setCandidates([]);
-      setSelectedId("");
-      setQuantity(1);
-      setNotes("");
-      window.setTimeout(() => searchInputRef.current?.focus(), 0);
+      provideFeedback("success");
+      resetSearch();
+      lastScanRef.current = { value: "", timestamp: 0 };
+      focusSearch();
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
           : "Falha ao registrar baixa.",
       );
+      provideFeedback("error");
     } finally {
       setIsSaving(false);
     }
@@ -230,7 +328,10 @@ export function ExpirationWriteOffModal({
           <div className="mb-6 flex gap-2 rounded-xl bg-[var(--casabella-background)] p-1">
             <button
               className={`flex-1 rounded-lg px-4 py-2 text-sm font-bold ${tab === "write-off" ? "bg-white text-[var(--casabella-teal)] shadow-sm" : "text-[var(--casabella-muted)]"}`}
-              onClick={() => setTab("write-off")}
+              onClick={() => {
+                setTab("write-off");
+                focusSearch();
+              }}
               type="button"
             >
               Dar baixa
@@ -252,7 +353,7 @@ export function ExpirationWriteOffModal({
               Loja
               <select
                 className="mt-2 h-11 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-3"
-                onChange={(event) => setStoreId(event.target.value)}
+                onChange={(event) => changeStore(event.target.value)}
                 value={storeId}
               >
                 <option value="">Todas as lojas</option>
@@ -284,21 +385,67 @@ export function ExpirationWriteOffModal({
 
           {tab === "write-off" ? (
             <form onSubmit={submitWriteOff}>
-              <label
-                className="block text-sm font-semibold text-[var(--casabella-graphite)]"
-                htmlFor="write-off-search"
-              >
-                Código de barras, código ou nome do produto
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label
+                  className="block text-sm font-semibold text-[var(--casabella-graphite)]"
+                  htmlFor="write-off-search"
+                >
+                  Código de barras, código ou nome do produto
+                </label>
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                    isSearching || isSaving
+                      ? "bg-amber-50 text-amber-800"
+                      : error
+                        ? "bg-red-50 text-red-700"
+                        : selected
+                          ? "bg-sky-50 text-sky-700"
+                          : "bg-emerald-50 text-emerald-700"
+                  }`}
+                  role="status"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`size-2 rounded-full ${
+                      isSearching || isSaving
+                        ? "animate-pulse bg-amber-500"
+                        : error
+                          ? "bg-red-500"
+                          : selected
+                            ? "bg-sky-500"
+                            : "bg-emerald-500"
+                    }`}
+                  />
+                  {isSaving
+                    ? "Registrando baixa"
+                    : isSearching
+                      ? "Lendo código"
+                      : error
+                        ? "Verifique a leitura"
+                        : selected
+                          ? "Produto localizado"
+                          : success
+                            ? "Pronto para a próxima leitura"
+                            : "Leitor pronto"}
+                </span>
+              </div>
               <div className="mt-2 flex flex-col gap-3 sm:flex-row">
                 <input
                   autoComplete="off"
                   className="h-12 flex-1 rounded-xl border border-[var(--casabella-border)] px-4 text-base outline-none focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)]"
                   id="write-off-search"
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    if (error) setError("");
+                  }}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") {
+                    const isScannerLineFeed =
+                      event.ctrlKey &&
+                      (event.key.toLowerCase() === "j" || event.code === "KeyJ");
+
+                    if (event.key === "Enter" || isScannerLineFeed) {
                       event.preventDefault();
+                      event.stopPropagation();
                       void findCandidates();
                     }
                   }}
@@ -315,10 +462,25 @@ export function ExpirationWriteOffModal({
                   {isSearching ? "Buscando..." : "Buscar"}
                 </button>
               </div>
-              <p className="mt-2 text-xs text-[var(--casabella-muted)]">
-                Leitores USB comuns funcionam como teclado e enviam Enter
-                automaticamente.
-              </p>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-[var(--casabella-muted)]">
+                  Leitores USB funcionam como teclado. O Enter inicia a busca e
+                  o campo volta a ficar pronto após cada baixa.
+                </p>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--casabella-muted)]">
+                  <input
+                    checked={soundEnabled}
+                    className="size-4 accent-[var(--casabella-teal)]"
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setSoundEnabled(enabled);
+                      if (enabled) playFeedbackTone("success");
+                    }}
+                    type="checkbox"
+                  />
+                  Som de confirmação
+                </label>
+              </div>
 
               {candidates.length > 0 ? (
                 <div className="mt-6 space-y-3">
