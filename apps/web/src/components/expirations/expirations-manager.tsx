@@ -18,6 +18,7 @@ interface ExpirationsManagerProps {
   initialPage: ExpirationPage;
   stores: Store[];
   isAdmin: boolean;
+  initialAction?: "create" | "write-off";
 }
 
 interface ExpirationStatus {
@@ -141,6 +142,7 @@ function getVisiblePages(currentPage: number, totalPages: number): number[] {
 }
 
 export function ExpirationsManager({
+  initialAction,
   initialPage,
   stores,
   isAdmin,
@@ -148,18 +150,28 @@ export function ExpirationsManager({
   const router = useRouter();
   const activeRequest = useRef<AbortController | null>(null);
   const isFirstFilterRender = useRef(true);
+  const canCreateExpiration =
+    !isAdmin || stores.some((store) => store.isActive);
 
   const [expirationPage, setExpirationPage] = useState(initialPage);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<ExpirationStatusFilter>("all");
   const [storeFilter, setStoreFilter] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState(
+    initialAction === "create" && !canCreateExpiration
+      ? "Nenhuma loja ativa está disponível para o cadastro."
+      : "",
+  );
   const [successMessage, setSuccessMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isWriteOffOpen, setIsWriteOffOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(
+    initialAction === "create" && canCreateExpiration,
+  );
+  const [isWriteOffOpen, setIsWriteOffOpen] = useState(
+    initialAction === "write-off",
+  );
   const [selectedExpiration, setSelectedExpiration] =
     useState<ExpirationRecord | null>(null);
 

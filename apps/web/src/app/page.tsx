@@ -14,51 +14,27 @@ export const metadata: Metadata = {
   title: "Painel do sistema",
 };
 
-const modules = [
+const quickActions = [
   {
-    number: "01",
-    title: "Lojas",
-    description:
-      "Consulte, cadastre, atualize, ative e inative as lojas do grupo.",
-    status: "Disponível",
-    href: "/stores",
-    adminOnly: true,
+    eyebrow: "Cadastro",
+    title: "Nova validade",
+    description: "Registre rapidamente um novo lote e sua data de validade.",
+    href: "/expirations?action=create",
+    accentClassName: "bg-emerald-50 text-emerald-700",
   },
   {
-    number: "02",
-    title: "Usuários",
-    description:
-      "Gerencie os usuários responsáveis pelas operações de cada loja.",
-    status: "Disponível",
-    href: "/users",
-    adminOnly: true,
+    eyebrow: "Operação rápida",
+    title: "Dar baixa",
+    description: "Use o leitor de código de barras e atualize o estoque do lote.",
+    href: "/expirations?action=write-off",
+    accentClassName: "bg-amber-50 text-amber-800",
   },
   {
-    number: "03",
-    title: "Produtos",
-    description:
-      "Consulte, cadastre, atualize, ative e inative os produtos do catálogo.",
-    status: "Disponível",
-    href: "/products",
-    adminOnly: true,
-  },
-  {
-    number: "04",
-    title: "Validades",
-    description:
-      "Acompanhe lotes, quantidades e datas de validade dos produtos por loja.",
-    status: "Disponível",
-    href: "/expirations",
-    adminOnly: false,
-  },
-  {
-    number: "05",
+    eyebrow: "Acompanhamento",
     title: "Alertas",
-    description:
-      "Consulte produtos vencidos ou próximos do vencimento e registre a verificação.",
-    status: "Disponível",
+    description: "Veja produtos vencidos ou próximos do vencimento.",
     href: "/alerts",
-    adminOnly: false,
+    accentClassName: "bg-red-50 text-red-700",
   },
 ];
 
@@ -89,10 +65,6 @@ export default async function Home() {
   }
 
   const isAdmin = user.role === "ADMIN";
-  const availableModules = modules.filter(
-    (module) => !module.adminOnly || isAdmin,
-  );
-
   return (
     <main className="min-h-screen bg-[var(--casabella-background)]">
       <AppHeader
@@ -134,54 +106,51 @@ export default async function Home() {
           overview={expirationOverview}
         />
 
-        <section className="mt-9">
+        <section className="mt-8" aria-labelledby="quick-actions-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm font-bold tracking-[0.15em] text-[var(--casabella-coral)] uppercase">
-                {isAdmin ? "Administração" : "Operação"}
+                Operação
               </p>
 
-              <h2 className="mt-1 text-2xl font-bold text-[var(--casabella-teal-dark)]">
-                Áreas do sistema
+              <h2
+                className="mt-1 text-2xl font-bold text-[var(--casabella-teal-dark)]"
+                id="quick-actions-title"
+              >
+                Ações rápidas
               </h2>
             </div>
 
             <p className="text-sm text-[var(--casabella-muted)]">
-              Sessão protegida por autenticação
+              As demais áreas estão disponíveis no menu.
             </p>
           </div>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {availableModules.map((module) => (
-              <article
-                className="group flex min-h-64 flex-col rounded-2xl border border-[var(--casabella-border)] bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[var(--casabella-teal)] hover:shadow-[0_18px_45px_rgba(0,67,77,0.09)]"
-                key={module.title}
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {quickActions.map((action) => (
+              <Link
+                className="group flex min-h-40 flex-col rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] hover:shadow-[0_14px_35px_rgba(0,67,77,0.08)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] sm:p-6"
+                href={action.href}
+                key={action.title}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <span className="flex size-11 items-center justify-center rounded-xl bg-[var(--casabella-teal-soft)] text-sm font-bold text-[var(--casabella-teal-dark)]">
-                    {module.number}
-                  </span>
+                <span
+                  className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${action.accentClassName}`}
+                >
+                  {action.eyebrow}
+                </span>
 
-                  <span className="rounded-full bg-[var(--casabella-background)] px-3 py-1 text-xs font-semibold text-[var(--casabella-muted)]">
-                    {module.status}
-                  </span>
-                </div>
-
-                <h3 className="mt-6 text-xl font-bold text-[var(--casabella-teal-dark)]">
-                  {module.title}
+                <h3 className="mt-4 text-lg font-bold text-[var(--casabella-teal-dark)] sm:text-xl">
+                  {action.title}
                 </h3>
 
-                <p className="mt-2 flex-1 text-sm leading-6 text-[var(--casabella-muted)]">
-                  {module.description}
+                <p className="mt-2 flex-1 text-sm leading-5 text-[var(--casabella-muted)] sm:leading-6">
+                  {action.description}
                 </p>
 
-                <Link
-                  className="mt-5 border-t border-[var(--casabella-border)] pt-4 text-sm font-semibold text-[var(--casabella-teal)] transition group-hover:text-[var(--casabella-teal-dark)]"
-                  href={module.href}
-                >
-                  Acessar módulo <span aria-hidden="true">→</span>
-                </Link>
-              </article>
+                <span className="mt-4 text-sm font-semibold text-[var(--casabella-teal)] transition group-hover:text-[var(--casabella-teal-dark)]">
+                  Acessar <span aria-hidden="true">→</span>
+                </span>
+              </Link>
             ))}
           </div>
         </section>

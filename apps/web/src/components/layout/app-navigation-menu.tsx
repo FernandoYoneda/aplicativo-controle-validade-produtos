@@ -109,7 +109,10 @@ export function AppNavigationMenu({
   const pathname = usePathname();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [isRendered, setIsRendered] = useState(false);
 
   const isAdmin = user.role === "ADMIN";
   const availableItems = navigationItems.filter(
@@ -117,29 +120,75 @@ export function AppNavigationMenu({
   );
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isRendered) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
 
-    function closeOnEscape(event: KeyboardEvent) {
+    function handleMenuKeyboard(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setIsOpen(false);
-        menuButtonRef.current?.focus();
+        closeMenu();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusableElements = menuPanelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+
+      if (!focusableElements?.length) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     }
 
-    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", handleMenuKeyboard);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("keydown", handleMenuKeyboard);
     };
-  }, [isOpen]);
+  }, [isRendered]);
+
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function openMenu() {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+
+    setIsRendered(true);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setIsOpen(true);
+        closeButtonRef.current?.focus();
+      });
+    });
+  }
 
   function closeMenu() {
     setIsOpen(false);
-    window.setTimeout(() => menuButtonRef.current?.focus(), 0);
+    menuButtonRef.current?.focus();
+    closeTimerRef.current = window.setTimeout(() => {
+      setIsRendered(false);
+      closeTimerRef.current = null;
+    }, 300);
   }
 
   return (
@@ -148,7 +197,7 @@ export function AppNavigationMenu({
         aria-controls="application-navigation"
         aria-expanded={isOpen}
         className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-bold text-[var(--casabella-teal-dark)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)]"
-        onClick={() => setIsOpen(true)}
+        onClick={openMenu}
         ref={menuButtonRef}
         type="button"
       >
@@ -161,11 +210,17 @@ export function AppNavigationMenu({
         <span className="sr-only sm:hidden">Abrir menu</span>
       </button>
 
-      {isOpen ? (
-        <div className="fixed inset-0 z-50">
+      {isRendered ? (
+        <div
+          className={`fixed inset-0 z-50 transition-[visibility] duration-300 motion-reduce:transition-none ${
+            isOpen ? "visible" : "pointer-events-none invisible"
+          }`}
+        >
           <button
             aria-label="Fechar menu"
-            className="absolute inset-0 cursor-default bg-zinc-950/45 backdrop-blur-[2px]"
+            className={`absolute inset-0 cursor-default bg-zinc-950/45 backdrop-blur-[2px] transition-opacity duration-300 ease-out motion-reduce:transition-none ${
+              isOpen ? "opacity-100" : "opacity-0"
+            }`}
             onClick={closeMenu}
             type="button"
           />
@@ -173,8 +228,11 @@ export function AppNavigationMenu({
           <aside
             aria-label="Menu principal"
             aria-modal="true"
-            className="absolute top-0 right-0 flex h-full w-[min(90vw,380px)] flex-col bg-white shadow-[-20px_0_60px_rgba(0,0,0,0.18)]"
+            className={`absolute top-0 right-0 flex h-full w-[min(88vw,380px)] flex-col bg-white shadow-[-20px_0_60px_rgba(0,0,0,0.18)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+              isOpen ? "translate-x-0" : "translate-x-full"
+            }`}
             id="application-navigation"
+            ref={menuPanelRef}
             role="dialog"
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--casabella-border)] px-6 py-5">
@@ -215,7 +273,7 @@ export function AppNavigationMenu({
                             : "text-[var(--casabella-graphite)] hover:bg-[var(--casabella-teal-soft)] hover:text-[var(--casabella-teal-dark)]"
                         }`}
                         href={item.href}
-                        onClick={() => setIsOpen(false)}
+                        onClick={closeMenu}
                       >
                         <NavigationIcon name={item.icon} />
                         <span>{item.label}</span>
