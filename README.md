@@ -9,7 +9,8 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Administrador
 
 - autenticação por login ou e-mail;
-- menu lateral responsivo com acesso rápido às áreas permitidas, identificação do usuário, versão e saída;
+- cabeçalho fixo e menu lateral responsivo com transição suave, acesso às áreas permitidas, identificação do usuário, versão e saída;
+- painel com ações rápidas para nova validade, baixa de produto e alertas;
 - painel consolidado com indicadores por período e registros prioritários;
 - alerta visual automático para registros vencidos ou próximos do vencimento;
 - central de alertas com busca, filtros por loja, situação e verificação;
@@ -32,7 +33,8 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 ### Usuário de loja
 
 - autenticação por login ou e-mail;
-- menu lateral responsivo com acesso rápido às áreas da operação, identificação do usuário, versão e saída;
+- cabeçalho fixo e menu lateral responsivo com transição suave, acesso às áreas da operação, identificação do usuário, versão e saída;
+- painel com ações rápidas para nova validade, baixa de produto e alertas;
 - painel com indicadores da própria unidade;
 - alerta visual de validades vencidas ou próximas do vencimento na própria unidade;
 - central de alertas restrita à própria unidade, com registro de verificação;

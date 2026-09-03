@@ -16,7 +16,15 @@ export const metadata: Metadata = {
   title: "Gerenciamento de validades",
 };
 
-export default async function ExpirationsPage() {
+interface ExpirationsPageProps {
+  searchParams: Promise<{
+    action?: string | string[];
+  }>;
+}
+
+export default async function ExpirationsPage({
+  searchParams,
+}: ExpirationsPageProps) {
   let user: AuthenticatedUser | null = null;
 
   try {
@@ -30,6 +38,11 @@ export default async function ExpirationsPage() {
   }
 
   const isAdmin = user.role === "ADMIN";
+  const requestedAction = (await searchParams).action;
+  const initialAction =
+    requestedAction === "create" || requestedAction === "write-off"
+      ? requestedAction
+      : undefined;
 
   let expirationPage: ExpirationPage | null = null;
   let stores: Store[] | null = [];
@@ -103,6 +116,7 @@ export default async function ExpirationsPage() {
             </div>
           ) : (
             <ExpirationsManager
+              initialAction={initialAction}
               initialPage={expirationPage!}
               isAdmin={isAdmin}
               stores={stores ?? []}

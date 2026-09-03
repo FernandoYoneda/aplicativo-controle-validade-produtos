@@ -219,10 +219,10 @@ export function ExpirationOverview({
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {indicators.map((indicator) => (
               <article
-                className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm"
+                className="rounded-2xl border border-[var(--casabella-border)] bg-white p-4 shadow-sm sm:p-5"
                 key={indicator.label}
               >
                 <p className="text-sm text-[var(--casabella-muted)]">
@@ -230,7 +230,7 @@ export function ExpirationOverview({
                 </p>
 
                 <p
-                  className={`mt-2 text-3xl font-bold ${indicator.valueClassName}`}
+                  className={`mt-2 text-2xl font-bold sm:text-3xl ${indicator.valueClassName}`}
                 >
                   {indicator.value}
                 </p>

@@ -13,7 +13,7 @@ export function AppHeader({ section, user }: AppHeaderProps) {
   const appVersion = process.env.APP_VERSION ?? "desenvolvimento";
 
   return (
-    <header className="border-b border-[var(--casabella-border)] bg-white">
+    <header className="sticky top-0 z-40 border-b border-[var(--casabella-border)] bg-white shadow-[0_4px_18px_rgba(0,67,77,0.04)]">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4 sm:px-8 lg:px-10">
         <div className="flex min-w-0 items-center gap-4">
           <Link href="/" aria-label="Ir para o painel">
