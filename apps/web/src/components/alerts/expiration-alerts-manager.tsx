@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { notifyPendingAlertCountChanged } from "../../lib/alert-events";
 import type { ApiErrorResponse } from "../../types/auth";
 import type {
   ExpirationAlertItem,
@@ -196,6 +197,7 @@ export function ExpirationAlertsManager({
       }
 
       setSuccessMessage("Alerta marcado como verificado.");
+      notifyPendingAlertCountChanged();
       await loadAlerts(alertPage.pagination.page);
     } catch {
       setErrorMessage("Não foi possível conectar ao serviço de alertas.");
