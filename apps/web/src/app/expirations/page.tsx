@@ -119,6 +119,7 @@ export default async function ExpirationsPage({
               initialAction={initialAction}
               initialPage={expirationPage!}
               isAdmin={isAdmin}
+              key={initialAction ?? "default"}
               stores={stores ?? []}
             />
           )}

@@ -308,6 +308,18 @@ export function ExpirationsManager({
   function closeForm() {
     setIsFormOpen(false);
     setSelectedExpiration(null);
+
+    if (initialAction === "create") {
+      router.replace("/expirations", { scroll: false });
+    }
+  }
+
+  function closeWriteOff() {
+    setIsWriteOffOpen(false);
+
+    if (initialAction === "write-off") {
+      router.replace("/expirations", { scroll: false });
+    }
   }
 
   async function handleExpirationSaved(savedExpiration: ExpirationRecord) {
@@ -806,7 +818,7 @@ export function ExpirationsManager({
       {isWriteOffOpen ? (
         <ExpirationWriteOffModal
           isAdmin={isAdmin}
-          onClose={() => setIsWriteOffOpen(false)}
+          onClose={closeWriteOff}
           onSaved={handleWriteOffSaved}
           stores={stores}
         />
