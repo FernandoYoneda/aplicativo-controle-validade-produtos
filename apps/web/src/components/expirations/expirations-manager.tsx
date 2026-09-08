@@ -16,6 +16,12 @@ import { ExpirationWriteOffModal } from "./expiration-write-off-modal";
 
 interface ExpirationsManagerProps {
   initialPage: ExpirationPage;
+  initialFilters: {
+    page: number;
+    search: string;
+    status: ExpirationStatusFilter;
+    storeId: string;
+  };
   stores: Store[];
   isAdmin: boolean;
   initialAction?: "create" | "write-off";
@@ -143,6 +149,7 @@ function getVisiblePages(currentPage: number, totalPages: number): number[] {
 
 export function ExpirationsManager({
   initialAction,
+  initialFilters,
   initialPage,
   stores,
   isAdmin,
@@ -154,10 +161,10 @@ export function ExpirationsManager({
     !isAdmin || stores.some((store) => store.isActive);
 
   const [expirationPage, setExpirationPage] = useState(initialPage);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialFilters.search);
   const [statusFilter, setStatusFilter] =
-    useState<ExpirationStatusFilter>("all");
-  const [storeFilter, setStoreFilter] = useState("");
+    useState<ExpirationStatusFilter>(initialFilters.status);
+  const [storeFilter, setStoreFilter] = useState(initialFilters.storeId);
   const [errorMessage, setErrorMessage] = useState(
     initialAction === "create" && !canCreateExpiration
       ? "Nenhuma loja ativa está disponível para o cadastro."
@@ -174,6 +181,31 @@ export function ExpirationsManager({
   );
   const [selectedExpiration, setSelectedExpiration] =
     useState<ExpirationRecord | null>(null);
+
+  const replaceBrowserUrl = useCallback(
+    (
+      page: number,
+      searchValue: string,
+      status: ExpirationStatusFilter,
+      storeId: string,
+    ) => {
+      const parameters = new URLSearchParams();
+      const normalizedSearch = searchValue.trim();
+
+      if (page > 1) parameters.set("page", String(page));
+      if (normalizedSearch) parameters.set("search", normalizedSearch);
+      if (status !== "all") parameters.set("status", status);
+      if (isAdmin && storeId) parameters.set("storeId", storeId);
+
+      const query = parameters.toString();
+      window.history.replaceState(
+        null,
+        "",
+        query ? `/expirations?${query}` : "/expirations",
+      );
+    },
+    [isAdmin],
+  );
 
   const loadExpirations = useCallback(
     async (
@@ -203,6 +235,8 @@ export function ExpirationsManager({
       if (isAdmin && storeId) {
         parameters.set("storeId", storeId);
       }
+
+      replaceBrowserUrl(page, searchValue, status, storeId);
 
       try {
         const response = await fetch(`/api/expirations/page?${parameters}`, {
@@ -238,7 +272,12 @@ export function ExpirationsManager({
         }
       }
     },
-    [expirationPage.pagination.pageSize, isAdmin, router],
+    [
+      expirationPage.pagination.pageSize,
+      isAdmin,
+      replaceBrowserUrl,
+      router,
+    ],
   );
 
   useEffect(() => {
@@ -310,7 +349,12 @@ export function ExpirationsManager({
     setSelectedExpiration(null);
 
     if (initialAction === "create") {
-      router.replace("/expirations", { scroll: false });
+      replaceBrowserUrl(
+        expirationPage.pagination.page,
+        search,
+        statusFilter,
+        storeFilter,
+      );
     }
   }
 
@@ -318,8 +362,20 @@ export function ExpirationsManager({
     setIsWriteOffOpen(false);
 
     if (initialAction === "write-off") {
-      router.replace("/expirations", { scroll: false });
+      replaceBrowserUrl(
+        expirationPage.pagination.page,
+        search,
+        statusFilter,
+        storeFilter,
+      );
     }
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setStoreFilter("");
+    setSuccessMessage("");
   }
 
   async function handleExpirationSaved(savedExpiration: ExpirationRecord) {
@@ -430,41 +486,64 @@ export function ExpirationsManager({
     <>
       <div className="flex flex-col gap-6">
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <article className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm">
+          <button
+            aria-pressed={statusFilter === "active"}
+            className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] ${statusFilter === "active" ? "border-[var(--casabella-teal)] ring-2 ring-[var(--casabella-teal-soft)]" : "border-[var(--casabella-border)]"}`}
+            onClick={() => setStatusFilter("active")}
+            type="button"
+          >
             <p className="text-sm font-medium text-[var(--casabella-muted)]">
-              Total de registros
+              Registros ativos
             </p>
             <p className="mt-2 text-3xl font-bold text-[var(--casabella-teal-dark)]">
-              {isLoading ? "—" : expirationPage.summary.totalRecords}
+              {isLoading
+                ? "—"
+                : expirationPage.summary.totalRecords -
+                  expirationPage.summary.inactiveRecords}
             </p>
-          </article>
+          </button>
 
-          <article className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm">
+          <button
+            aria-pressed={statusFilter === "expired"}
+            className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] ${statusFilter === "expired" ? "border-[var(--casabella-teal)] ring-2 ring-[var(--casabella-teal-soft)]" : "border-[var(--casabella-border)]"}`}
+            onClick={() => setStatusFilter("expired")}
+            type="button"
+          >
             <p className="text-sm font-medium text-[var(--casabella-muted)]">
               Produtos vencidos
             </p>
             <p className="mt-2 text-3xl font-bold text-red-700">
               {isLoading ? "—" : expirationPage.summary.expiredRecords}
             </p>
-          </article>
+          </button>
 
-          <article className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm">
+          <button
+            aria-pressed={statusFilter === "upcoming"}
+            className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] ${statusFilter === "upcoming" ? "border-[var(--casabella-teal)] ring-2 ring-[var(--casabella-teal-soft)]" : "border-[var(--casabella-border)]"}`}
+            onClick={() => setStatusFilter("upcoming")}
+            type="button"
+          >
             <p className="text-sm font-medium text-[var(--casabella-muted)]">
               Próximos 30 dias
             </p>
             <p className="mt-2 text-3xl font-bold text-amber-700">
               {isLoading ? "—" : expirationPage.summary.upcomingRecords}
             </p>
-          </article>
+          </button>
 
-          <article className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm">
+          <button
+            aria-pressed={statusFilter === "inactive"}
+            className={`rounded-2xl border bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] ${statusFilter === "inactive" ? "border-[var(--casabella-teal)] ring-2 ring-[var(--casabella-teal-soft)]" : "border-[var(--casabella-border)]"}`}
+            onClick={() => setStatusFilter("inactive")}
+            type="button"
+          >
             <p className="text-sm font-medium text-[var(--casabella-muted)]">
               Registros inativos
             </p>
             <p className="mt-2 text-3xl font-bold text-[var(--casabella-coral-dark)]">
               {isLoading ? "—" : expirationPage.summary.inactiveRecords}
             </p>
-          </article>
+          </button>
         </section>
 
         {successMessage ? (
@@ -539,8 +618,12 @@ export function ExpirationsManager({
           <div
             className={`grid gap-4 border-b border-[var(--casabella-border)] p-5 ${
               isAdmin
-                ? "lg:grid-cols-[minmax(0,1fr)_220px_240px]"
-                : "lg:grid-cols-[minmax(0,1fr)_240px]"
+                ? hasActiveFilters
+                  ? "lg:grid-cols-[minmax(0,1fr)_220px_240px_auto]"
+                  : "lg:grid-cols-[minmax(0,1fr)_220px_240px]"
+                : hasActiveFilters
+                  ? "lg:grid-cols-[minmax(0,1fr)_240px_auto]"
+                  : "lg:grid-cols-[minmax(0,1fr)_240px]"
             }`}
           >
             <div>
@@ -578,6 +661,7 @@ export function ExpirationsManager({
                 value={statusFilter}
               >
                 <option value="all">Todas as situações</option>
+                <option value="active">Ativos</option>
                 <option value="expired">Vencidos</option>
                 <option value="upcoming">Próximos 30 dias</option>
                 <option value="threeMonths">De 31 dias a 3 meses</option>
@@ -611,6 +695,17 @@ export function ExpirationsManager({
                     </option>
                   ))}
                 </select>
+              </div>
+            ) : null}
+            {hasActiveFilters ? (
+              <div className="flex items-end">
+                <button
+                  className="h-11 w-full rounded-xl border border-[var(--casabella-border)] px-4 text-sm font-semibold text-[var(--casabella-muted)] transition hover:border-[var(--casabella-teal)] hover:text-[var(--casabella-teal-dark)] lg:w-auto"
+                  onClick={clearFilters}
+                  type="button"
+                >
+                  Limpar filtros
+                </button>
               </div>
             ) : null}
           </div>

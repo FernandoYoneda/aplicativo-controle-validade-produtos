@@ -36,6 +36,7 @@ export interface ExpirationRecord {
 
 export type ExpirationStatusFilter =
   | "all"
+  | "active"
   | "expired"
   | "upcoming"
   | "threeMonths"

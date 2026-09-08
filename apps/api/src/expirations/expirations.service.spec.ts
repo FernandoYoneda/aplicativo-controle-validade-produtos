@@ -558,6 +558,26 @@ describe('ExpirationsService', () => {
     });
   });
 
+  it('should filter active expiration records', async () => {
+    prismaServiceMock.productLot.count.mockResolvedValue(0);
+    prismaServiceMock.productLot.findMany.mockResolvedValue([]);
+
+    await service.findPage(
+      {
+        page: 1,
+        pageSize: 25,
+        status: ExpirationStatusFilter.ACTIVE,
+      },
+      adminUser,
+    );
+
+    expect(prismaServiceMock.productLot.count).toHaveBeenNthCalledWith(1, {
+      where: {
+        AND: [{}, { isActive: true }],
+      },
+    });
+  });
+
   it('should keep paginated results restricted to the store user store', async () => {
     prismaServiceMock.productLot.count
       .mockResolvedValueOnce(1)

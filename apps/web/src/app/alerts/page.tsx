@@ -10,13 +10,42 @@ import { getExpirationAlerts } from "../../lib/expirations";
 import { getStores } from "../../lib/stores";
 import type { AuthenticatedUser } from "../../types/auth";
 import type { ExpirationAlertPage } from "../../types/expiration";
+import type {
+  ExpirationAlertReviewFilter,
+  ExpirationAlertStatusFilter,
+} from "../../types/expiration";
 import type { Store } from "../../types/store";
 
 export const metadata: Metadata = {
   title: "Central de alertas",
 };
 
-export default async function AlertsPage() {
+interface AlertsPageProps {
+  searchParams: Promise<{
+    page?: string | string[];
+    review?: string | string[];
+    search?: string | string[];
+    status?: string | string[];
+    storeId?: string | string[];
+  }>;
+}
+
+const alertStatuses = new Set<ExpirationAlertStatusFilter>([
+  "all",
+  "expired",
+  "upcoming",
+]);
+const reviewStatuses = new Set<ExpirationAlertReviewFilter>([
+  "all",
+  "pending",
+  "reviewed",
+]);
+
+function getSingleValue(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+export default async function AlertsPage({ searchParams }: AlertsPageProps) {
   let user: AuthenticatedUser | null = null;
 
   try {
@@ -28,13 +57,31 @@ export default async function AlertsPage() {
   if (!user) redirect("/login");
 
   const isAdmin = user.role === "ADMIN";
+  const requestedFilters = await searchParams;
+  const requestedStatus = getSingleValue(requestedFilters.status);
+  const requestedReview = getSingleValue(requestedFilters.review);
+  const requestedPage = Number.parseInt(
+    getSingleValue(requestedFilters.page),
+    10,
+  );
+  const initialFilters = {
+    page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    search: getSingleValue(requestedFilters.search).trim(),
+    status: alertStatuses.has(requestedStatus as ExpirationAlertStatusFilter)
+      ? (requestedStatus as ExpirationAlertStatusFilter)
+      : ("all" as const),
+    review: reviewStatuses.has(requestedReview as ExpirationAlertReviewFilter)
+      ? (requestedReview as ExpirationAlertReviewFilter)
+      : ("all" as const),
+    storeId: isAdmin ? getSingleValue(requestedFilters.storeId) : "",
+  };
   let alerts: ExpirationAlertPage | null = null;
   let stores: Store[] | null = [];
   let loadError = false;
 
   try {
     [alerts, stores] = await Promise.all([
-      getExpirationAlerts(),
+      getExpirationAlerts(initialFilters),
       isAdmin ? getStores() : Promise.resolve([]),
     ]);
   } catch {
@@ -48,6 +95,14 @@ export default async function AlertsPage() {
       <AppHeader section="Central de alertas" user={user} />
 
       <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
+        <Link
+          className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] shadow-sm transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)]"
+          href="/"
+        >
+          <span aria-hidden="true">←</span>
+          Voltar ao painel
+        </Link>
+
         <section className="relative overflow-hidden rounded-3xl bg-[var(--casabella-teal)] px-6 py-8 text-white shadow-[0_20px_60px_rgba(0,67,77,0.13)] sm:px-10 sm:py-10">
           <div
             aria-hidden="true"
@@ -92,6 +147,7 @@ export default async function AlertsPage() {
             </div>
           ) : (
             <ExpirationAlertsManager
+              initialFilters={initialFilters}
               initialPage={alerts!}
               isAdmin={isAdmin}
               stores={stores ?? []}

@@ -12,6 +12,9 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - cabeçalho fixo e menu lateral responsivo com transição suave, acesso às áreas permitidas, identificação do usuário, versão e saída;
 - painel com ações rápidas para nova validade, baixa de produto e alertas;
 - contador de alertas pendentes no menu e atalho responsivo para leitura de produtos;
+- indicadores interativos que abrem as validades e os alertas já filtrados;
+- filtros preservados na URL para compartilhamento e retorno à listagem;
+- retorno direto ao painel nas páginas de validades e alertas;
 - painel consolidado com indicadores por período e registros prioritários;
 - alerta visual automático para registros vencidos ou próximos do vencimento;
 - central de alertas com busca, filtros por loja, situação e verificação;
@@ -37,6 +40,9 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - cabeçalho fixo e menu lateral responsivo com transição suave, acesso às áreas da operação, identificação do usuário, versão e saída;
 - painel com ações rápidas para nova validade, baixa de produto e alertas;
 - contador de alertas pendentes no menu e atalho responsivo para leitura de produtos;
+- indicadores interativos que abrem as validades e os alertas já filtrados;
+- filtros preservados na URL para compartilhamento e retorno à listagem;
+- retorno direto ao painel nas páginas de validades e alertas;
 - painel com indicadores da própria unidade;
 - alerta visual de validades vencidas ou próximas do vencimento na própria unidade;
 - central de alertas restrita à própria unidade, com registro de verificação;
