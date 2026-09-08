@@ -9,7 +9,10 @@ import { getAuthenticatedUser } from "../../lib/auth";
 import { getExpirationPage } from "../../lib/expirations";
 import { getStores } from "../../lib/stores";
 import type { AuthenticatedUser } from "../../types/auth";
-import type { ExpirationPage } from "../../types/expiration";
+import type {
+  ExpirationPage,
+  ExpirationStatusFilter,
+} from "../../types/expiration";
 import type { Store } from "../../types/store";
 
 export const metadata: Metadata = {
@@ -19,7 +22,27 @@ export const metadata: Metadata = {
 interface ExpirationsPageProps {
   searchParams: Promise<{
     action?: string | string[];
+    page?: string | string[];
+    search?: string | string[];
+    status?: string | string[];
+    storeId?: string | string[];
   }>;
+}
+
+const expirationStatuses = new Set<ExpirationStatusFilter>([
+  "all",
+  "active",
+  "expired",
+  "upcoming",
+  "threeMonths",
+  "sixMonths",
+  "oneYear",
+  "beyondOneYear",
+  "inactive",
+]);
+
+function getSingleValue(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value : "";
 }
 
 export default async function ExpirationsPage({
@@ -38,11 +61,25 @@ export default async function ExpirationsPage({
   }
 
   const isAdmin = user.role === "ADMIN";
-  const requestedAction = (await searchParams).action;
+  const requestedParameters = await searchParams;
+  const requestedAction = requestedParameters.action;
   const initialAction =
     requestedAction === "create" || requestedAction === "write-off"
       ? requestedAction
       : undefined;
+  const requestedStatus = getSingleValue(requestedParameters.status);
+  const requestedPage = Number.parseInt(
+    getSingleValue(requestedParameters.page),
+    10,
+  );
+  const initialFilters = {
+    page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    search: getSingleValue(requestedParameters.search).trim(),
+    status: expirationStatuses.has(requestedStatus as ExpirationStatusFilter)
+      ? (requestedStatus as ExpirationStatusFilter)
+      : ("all" as const),
+    storeId: isAdmin ? getSingleValue(requestedParameters.storeId) : "",
+  };
 
   let expirationPage: ExpirationPage | null = null;
   let stores: Store[] | null = [];
@@ -50,7 +87,7 @@ export default async function ExpirationsPage({
 
   try {
     [expirationPage, stores] = await Promise.all([
-      getExpirationPage(),
+      getExpirationPage(initialFilters),
       isAdmin ? getStores() : Promise.resolve([]),
     ]);
   } catch {
@@ -66,6 +103,14 @@ export default async function ExpirationsPage({
       <AppHeader section="Gerenciamento de validades" user={user} />
 
       <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
+        <Link
+          className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] shadow-sm transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)]"
+          href="/"
+        >
+          <span aria-hidden="true">←</span>
+          Voltar ao painel
+        </Link>
+
         <section className="relative overflow-hidden rounded-3xl bg-[var(--casabella-teal)] px-6 py-8 text-white shadow-[0_20px_60px_rgba(0,67,77,0.13)] sm:px-10 sm:py-10">
           <div
             className="absolute -top-24 -right-20 size-64 rounded-full border-[45px] border-white/6"
@@ -117,6 +162,7 @@ export default async function ExpirationsPage({
           ) : (
             <ExpirationsManager
               initialAction={initialAction}
+              initialFilters={initialFilters}
               initialPage={expirationPage!}
               isAdmin={isAdmin}
               key={initialAction ?? "default"}

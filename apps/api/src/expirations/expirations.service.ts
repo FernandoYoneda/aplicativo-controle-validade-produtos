@@ -1074,6 +1074,8 @@ export class ExpirationsService {
     } = dateLimits;
 
     switch (status) {
+      case ExpirationStatusFilter.ACTIVE:
+        return { isActive: true };
       case ExpirationStatusFilter.EXPIRED:
         return {
           isActive: true,

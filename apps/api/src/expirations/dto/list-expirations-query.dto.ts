@@ -12,6 +12,7 @@ import {
 
 export enum ExpirationStatusFilter {
   ALL = 'all',
+  ACTIVE = 'active',
   EXPIRED = 'expired',
   UPCOMING = 'upcoming',
   THREE_MONTHS = 'threeMonths',

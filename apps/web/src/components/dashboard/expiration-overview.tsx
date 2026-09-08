@@ -89,41 +89,49 @@ export function ExpirationOverview({
       label: "Registros ativos",
       value: activeRecords,
       valueClassName: "text-[var(--casabella-teal-dark)]",
+      href: "/expirations?status=active",
     },
     {
       label: "Produtos vencidos",
       value: summary?.expiredRecords ?? 0,
       valueClassName: "text-red-700",
+      href: "/alerts?status=expired",
     },
     {
       label: "Próximos 30 dias",
       value: summary?.upcomingRecords ?? 0,
       valueClassName: "text-amber-700",
+      href: "/alerts?status=upcoming",
     },
     {
       label: "De 31 dias a 3 meses",
       value: summary?.threeMonthRecords ?? 0,
       valueClassName: "text-yellow-700",
+      href: "/expirations?status=threeMonths",
     },
     {
       label: "De 3 a 6 meses",
       value: summary?.sixMonthRecords ?? 0,
       valueClassName: "text-lime-700",
+      href: "/expirations?status=sixMonths",
     },
     {
       label: "De 6 meses a 1 ano",
       value: summary?.oneYearRecords ?? 0,
       valueClassName: "text-emerald-700",
+      href: "/expirations?status=oneYear",
     },
     {
       label: "Acima de 1 ano",
       value: summary?.beyondOneYearRecords ?? 0,
       valueClassName: "text-emerald-700",
+      href: "/expirations?status=beyondOneYear",
     },
     {
       label: "Registros inativos",
       value: summary?.inactiveRecords ?? 0,
       valueClassName: "text-[var(--casabella-coral-dark)]",
+      href: "/expirations?status=inactive",
     },
   ];
 
@@ -221,8 +229,10 @@ export function ExpirationOverview({
 
           <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {indicators.map((indicator) => (
-              <article
-                className="rounded-2xl border border-[var(--casabella-border)] bg-white p-4 shadow-sm sm:p-5"
+              <Link
+                aria-label={`Ver ${indicator.label.toLowerCase()}: ${indicator.value}`}
+                className="group rounded-2xl border border-[var(--casabella-border)] bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] hover:shadow-[0_12px_30px_rgba(0,67,77,0.08)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] sm:p-5"
+                href={indicator.href}
                 key={indicator.label}
               >
                 <p className="text-sm text-[var(--casabella-muted)]">
@@ -234,7 +244,10 @@ export function ExpirationOverview({
                 >
                   {indicator.value}
                 </p>
-              </article>
+                <span className="mt-3 inline-flex text-xs font-semibold text-[var(--casabella-teal)] opacity-75 transition group-hover:opacity-100">
+                  Ver registros <span aria-hidden="true">→</span>
+                </span>
+              </Link>
             ))}
           </div>
 
