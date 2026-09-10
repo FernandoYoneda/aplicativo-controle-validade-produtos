@@ -165,6 +165,11 @@ export function ExpirationsManager({
   const [statusFilter, setStatusFilter] =
     useState<ExpirationStatusFilter>(initialFilters.status);
   const [storeFilter, setStoreFilter] = useState(initialFilters.storeId);
+  const [areFiltersOpen, setAreFiltersOpen] = useState(
+    initialFilters.search !== "" ||
+      initialFilters.status !== "all" ||
+      initialFilters.storeId !== "",
+  );
   const [errorMessage, setErrorMessage] = useState(
     initialAction === "create" && !canCreateExpiration
       ? "Nenhuma loja ativa está disponível para o cadastro."
@@ -321,6 +326,11 @@ export function ExpirationsManager({
   );
   const hasActiveFilters =
     search.trim().length > 0 || statusFilter !== "all" || storeFilter !== "";
+  const activeFilterCount = [
+    search.trim().length > 0,
+    statusFilter !== "all",
+    isAdmin && storeFilter !== "",
+  ].filter(Boolean).length;
 
   function openCreateForm() {
     const hasActiveStores = stores.some((store) => store.isActive);
@@ -376,6 +386,7 @@ export function ExpirationsManager({
     setStatusFilter("all");
     setStoreFilter("");
     setSuccessMessage("");
+    setAreFiltersOpen(false);
   }
 
   async function handleExpirationSaved(savedExpiration: ExpirationRecord) {
@@ -615,8 +626,27 @@ export function ExpirationsManager({
             </div>
           </div>
 
-          <div
-            className={`grid gap-4 border-b border-[var(--casabella-border)] p-5 ${
+          <div className="border-b border-[var(--casabella-border)] p-5">
+            <button
+              aria-controls="expiration-filters"
+              aria-expanded={areFiltersOpen}
+              className="flex min-h-11 w-full items-center justify-between rounded-xl border border-[var(--casabella-border)] bg-[var(--casabella-background)] px-4 text-sm font-semibold text-[var(--casabella-teal-dark)] lg:hidden"
+              onClick={() => setAreFiltersOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              <span>Filtros</span>
+              <span className="flex items-center gap-2">
+                {activeFilterCount > 0 ? (
+                  <span className="rounded-full bg-[var(--casabella-teal)] px-2 py-0.5 text-xs text-white">
+                    {activeFilterCount} ativo{activeFilterCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                <span aria-hidden="true">{areFiltersOpen ? "−" : "+"}</span>
+              </span>
+            </button>
+
+            <div
+              className={`${areFiltersOpen ? "grid" : "hidden"} mt-4 gap-4 lg:mt-0 lg:grid ${
               isAdmin
                 ? hasActiveFilters
                   ? "lg:grid-cols-[minmax(0,1fr)_220px_240px_auto]"
@@ -624,8 +654,9 @@ export function ExpirationsManager({
                 : hasActiveFilters
                   ? "lg:grid-cols-[minmax(0,1fr)_240px_auto]"
                   : "lg:grid-cols-[minmax(0,1fr)_240px]"
-            }`}
-          >
+              }`}
+              id="expiration-filters"
+            >
             <div>
               <label
                 className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
@@ -708,6 +739,7 @@ export function ExpirationsManager({
                 </button>
               </div>
             ) : null}
+            </div>
           </div>
 
           {errorMessage ? (
@@ -752,7 +784,7 @@ export function ExpirationsManager({
 
           {!isLoading && !errorMessage && expirationPage.items.length > 0 ? (
             <>
-              <div className="divide-y divide-[var(--casabella-border)]">
+              <div className="space-y-3 bg-[var(--casabella-background)] p-3 lg:divide-y lg:divide-[var(--casabella-border)] lg:space-y-0 lg:bg-white lg:p-0">
                 {expirationPage.items.map((expiration) => {
                   const status = getExpirationStatus(expiration);
                   const product = expiration.storeProduct.product;
@@ -760,14 +792,14 @@ export function ExpirationsManager({
 
                   return (
                     <article
-                      className="grid gap-4 p-5 transition hover:bg-[var(--casabella-background)] lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_140px_100px_145px_76px] lg:items-center"
+                      className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--casabella-border)] bg-white p-4 shadow-sm transition hover:border-[var(--casabella-teal)] lg:rounded-none lg:border-0 lg:p-5 lg:shadow-none lg:hover:bg-[var(--casabella-background)] lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_140px_100px_145px_76px] lg:items-center"
                       key={expiration.id}
                     >
-                      <div className="min-w-0">
+                      <div className="col-span-2 min-w-0 lg:col-span-1">
                         <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
                           Produto
                         </p>
-                        <p className="mt-1 truncate font-semibold text-[var(--casabella-graphite)]">
+                        <p className="mt-1 break-words font-semibold text-[var(--casabella-graphite)] lg:truncate">
                           {product.code} — {product.name}
                         </p>
                         <p className="mt-1 truncate text-xs text-[var(--casabella-muted)]">
@@ -775,7 +807,7 @@ export function ExpirationsManager({
                         </p>
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="col-span-2 min-w-0 sm:col-span-1 lg:col-span-1">
                         <p className="text-xs font-semibold tracking-[0.1em] text-[var(--casabella-muted)] uppercase">
                           Loja
                         </p>
@@ -808,14 +840,14 @@ export function ExpirationsManager({
                       </div>
 
                       <span
-                        className={`w-fit justify-self-start rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
+                        className={`w-fit self-end justify-self-start rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
                       >
                         {status.label}
                       </span>
 
                       <button
                         aria-label={`Editar a validade do produto ${product.code}`}
-                        className="inline-flex h-9 w-[76px] items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-0 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)]"
+                        className="col-span-2 inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] sm:col-span-1 sm:justify-self-end lg:col-span-1 lg:h-9 lg:w-[76px] lg:justify-self-start lg:px-0"
                         onClick={() => openEditForm(expiration)}
                         type="button"
                       >
@@ -836,7 +868,7 @@ export function ExpirationsManager({
                   {hasActiveFilters ? " encontrados" : ""}.
                 </p>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-start">
                   <button
                     className="inline-flex h-9 items-center justify-center rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:cursor-not-allowed disabled:opacity-40"
                     disabled={expirationPage.pagination.page === 1 || isLoading}

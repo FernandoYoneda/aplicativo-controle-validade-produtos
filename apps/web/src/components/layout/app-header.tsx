@@ -74,18 +74,18 @@ export function AppHeader({ section, user }: AppHeaderProps) {
             Escanear produto
           </Link>
 
+          <Link
+            aria-label="Escanear produto para dar baixa"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--casabella-teal)] text-white shadow-sm transition hover:bg-[var(--casabella-teal-dark)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] md:hidden"
+            href="/expirations?action=write-off"
+            title="Escanear produto"
+          >
+            <ScanIcon />
+          </Link>
+
           <AppNavigationMenu appVersion={appVersion} user={user} />
         </div>
       </div>
-
-      <Link
-        aria-label="Escanear produto para dar baixa"
-        className="mobile-quick-scan fixed right-5 bottom-5 z-30 inline-flex h-14 items-center justify-center gap-2 rounded-full bg-[var(--casabella-teal)] px-5 text-sm font-bold text-white shadow-[0_12px_35px_rgba(0,67,77,0.3)] transition duration-200 hover:bg-[var(--casabella-teal-dark)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] md:hidden"
-        href="/expirations?action=write-off"
-      >
-        <ScanIcon />
-        Escanear
-      </Link>
     </header>
   );
 }
