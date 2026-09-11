@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -43,6 +44,13 @@ describe('ExpirationsService', () => {
     },
     productLotWriteOff: {
       create: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    productLotWriteOffReversal: {
+      create: jest.fn(),
+    },
+    expirationAlertAcknowledgement: {
+      deleteMany: jest.fn(),
     },
   };
 
@@ -464,6 +472,112 @@ describe('ExpirationsService', () => {
       expiration: { ...expiration, quantity: 7 },
       writeOff,
     });
+  });
+
+  it('should reverse a write-off, restore its quantity and reactivate the lot', async () => {
+    const writeOff = {
+      id: '00000000-0000-4000-8000-000000000701',
+      quantity: 3,
+      reversal: null,
+      productLot: { ...expiration, quantity: 0, isActive: false },
+    };
+    const reversal = {
+      id: '00000000-0000-4000-8000-000000000801',
+      restoredQuantity: 3,
+      previousQuantity: 0,
+      resultingQuantity: 3,
+      reason: 'Baixa registrada por engano',
+    };
+    transactionMock.productLotWriteOff.findUnique.mockResolvedValue(writeOff);
+    transactionMock.productLot.update.mockResolvedValue({
+      ...expiration,
+      quantity: 3,
+      isActive: true,
+    });
+    transactionMock.productLotWriteOffReversal.create.mockResolvedValue(
+      reversal,
+    );
+
+    await expect(
+      service.reverseWriteOff(
+        writeOff.id,
+        { reason: 'Baixa registrada por engano' },
+        storeUser,
+      ),
+    ).resolves.toEqual({
+      expiration: { ...expiration, quantity: 3, isActive: true },
+      writeOff: {
+        ...writeOff,
+        productLot: { ...expiration, quantity: 3, isActive: true },
+        reversal,
+      },
+    });
+    expect(transactionMock.productLot.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: expirationId, quantity: 0 },
+        data: { quantity: 3, isActive: true },
+      }),
+    );
+    expect(
+      transactionMock.productLotWriteOffReversal.create,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // O matcher do Jest é tipado como any; a asserção valida somente o payload observado.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        data: expect.objectContaining({
+          writeOffId: writeOff.id,
+          reversedByUserId: storeUser.id,
+          restoredQuantity: 3,
+          previousQuantity: 0,
+          resultingQuantity: 3,
+        }),
+      }),
+    );
+    expect(
+      transactionMock.expirationAlertAcknowledgement.deleteMany,
+    ).toHaveBeenCalledWith({ where: { productLotId: expirationId } });
+  });
+
+  it('should reject a write-off reversal that was already registered', async () => {
+    transactionMock.productLotWriteOff.findUnique.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000701',
+      quantity: 3,
+      reversal: { id: '00000000-0000-4000-8000-000000000801' },
+      productLot: expiration,
+    });
+
+    await expect(
+      service.reverseWriteOff(
+        '00000000-0000-4000-8000-000000000701',
+        { reason: 'Tentativa repetida' },
+        storeUser,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transactionMock.productLot.update).not.toHaveBeenCalled();
+  });
+
+  it('should prevent a store user from reversing another store write-off', async () => {
+    transactionMock.productLotWriteOff.findUnique.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000701',
+      quantity: 3,
+      reversal: null,
+      productLot: {
+        ...expiration,
+        storeProduct: {
+          ...expiration.storeProduct,
+          store: { ...expiration.storeProduct.store, id: otherStoreId },
+        },
+      },
+    });
+
+    await expect(
+      service.reverseWriteOff(
+        '00000000-0000-4000-8000-000000000701',
+        { reason: 'Correção indevida' },
+        storeUser,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(transactionMock.productLot.update).not.toHaveBeenCalled();
   });
 
   it('should return a filtered expiration page and global summary', async () => {

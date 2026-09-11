@@ -75,8 +75,9 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  store               Store?               @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  productLotWriteOffs ProductLotWriteOff[]
+  store                           Store?                           @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productLotWriteOffs             ProductLotWriteOff[]
+  productLotWriteOffReversals     ProductLotWriteOffReversal[]
   expirationAlertAcknowledgements ExpirationAlertAcknowledgement[]
 
   @@index([storeId])
@@ -131,9 +132,9 @@ model ProductLot {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  storeProduct StoreProduct         @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  writeOffs    ProductLotWriteOff[]
-  emailDeliveries ExpirationEmailDelivery[]
+  storeProduct          StoreProduct                     @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  writeOffs             ProductLotWriteOff[]
+  emailDeliveries       ExpirationEmailDelivery[]
   alertAcknowledgements ExpirationAlertAcknowledgement[]
 
   @@index([storeProductId, expirationDate])
@@ -153,14 +154,33 @@ model ProductLotWriteOff {
   notes             String?                  @db.VarChar(500)
   createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  productLot  ProductLot @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  performedBy User       @relation(fields: [performedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productLot      ProductLot                  @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  performedBy     User                        @relation(fields: [performedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   emailDeliveries ExpirationEmailDelivery[]
+  reversal        ProductLotWriteOffReversal?
 
   @@index([productLotId, createdAt])
   @@index([performedByUserId, createdAt])
   @@index([reason, createdAt])
   @@map("product_lot_write_offs")
+}
+
+model ProductLotWriteOffReversal {
+  id                String   @id @default(uuid()) @db.Uuid
+  writeOffId        String   @unique @map("write_off_id") @db.Uuid
+  reversedByUserId  String   @map("reversed_by_user_id") @db.Uuid
+  restoredQuantity  Int      @map("restored_quantity")
+  previousQuantity  Int      @map("previous_quantity")
+  resultingQuantity Int      @map("resulting_quantity")
+  reason            String   @db.VarChar(200)
+  notes             String?  @db.VarChar(500)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  writeOff   ProductLotWriteOff @relation(fields: [writeOffId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reversedBy User               @relation(fields: [reversedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([reversedByUserId, createdAt])
+  @@map("product_lot_write_off_reversals")
 }
 
 model ExpirationEmailDelivery {

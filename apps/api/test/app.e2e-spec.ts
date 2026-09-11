@@ -108,11 +108,19 @@ interface ExpirationOverviewBody {
 interface ExpirationWriteOffBody {
   expiration: ExpirationBody;
   writeOff: {
+    id: string;
     reason: 'SOLD' | 'EXPIRED' | 'DISCARDED';
     quantity: number;
     previousQuantity: number;
     remainingQuantity: number;
     performedBy: UserBody;
+    reversal: null | {
+      restoredQuantity: number;
+      previousQuantity: number;
+      resultingQuantity: number;
+      reason: string;
+      reversedBy: UserBody;
+    };
   };
 }
 
@@ -172,6 +180,17 @@ describe('API (e2e)', () => {
     if (!prisma) return;
 
     try {
+      await prisma.productLotWriteOffReversal.deleteMany({
+        where: {
+          writeOff: {
+            productLot: {
+              storeProduct: {
+                product: { code: { in: [productCode, updatedProductCode] } },
+              },
+            },
+          },
+        },
+      });
       await prisma.productLotWriteOff.deleteMany({
         where: {
           productLot: {
@@ -643,6 +662,48 @@ describe('API (e2e)', () => {
     >;
     expect(writeOffHistory).toHaveLength(1);
     expect(writeOffHistory[0]?.remainingQuantity).toBe(3);
+
+    await request(app.getHttpServer())
+      .post(`/expirations/write-offs/${writeOff.writeOff.id}/reversal`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ reason: 'Tentativa em outra loja' })
+      .expect(403);
+
+    const reversalResponse = await request(app.getHttpServer())
+      .post(`/expirations/write-offs/${writeOff.writeOff.id}/reversal`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        reason: '  Baixa registrada por engano  ',
+        notes: '  Conferido no caixa  ',
+      })
+      .expect(201);
+    const reversal = reversalResponse.body as ExpirationWriteOffBody;
+    expect(reversal.expiration.quantity).toBe(5);
+    expect(reversal.expiration.isActive).toBe(true);
+    expect(reversal.writeOff.reversal).toEqual(
+      expect.objectContaining({
+        restoredQuantity: 2,
+        previousQuantity: 3,
+        resultingQuantity: 5,
+        reason: 'Baixa registrada por engano',
+      }),
+    );
+    expect(reversal.writeOff.reversal?.reversedBy.id).toBe(sessionA.user.id);
+
+    await request(app.getHttpServer())
+      .post(`/expirations/write-offs/${writeOff.writeOff.id}/reversal`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ reason: 'Tentativa repetida' })
+      .expect(409);
+
+    const reversedHistoryResponse = await request(app.getHttpServer())
+      .get('/expirations/write-offs')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    const reversedHistory = reversedHistoryResponse.body as Array<
+      ExpirationWriteOffBody['writeOff']
+    >;
+    expect(reversedHistory[0]?.reversal?.resultingQuantity).toBe(5);
 
     const listAResponse = await request(app.getHttpServer())
       .get('/expirations')

@@ -9,6 +9,7 @@ import type {
   ExpirationRecord,
   ExpirationStatusFilter,
   ExpirationWriteOffResult,
+  ExpirationWriteOffReversalResult,
 } from "../../types/expiration";
 import type { Store } from "../../types/store";
 import { ExpirationFormModal } from "./expiration-form-modal";
@@ -423,6 +424,20 @@ export function ExpirationsManager({
       remainingQuantity === 0
         ? `Baixa registrada para ${productCode}. O lote foi encerrado e saiu dos alertas.`
         : `Baixa registrada para ${productCode}. Restam ${remainingQuantity} unidades.`,
+    );
+  }
+
+  function handleWriteOffReversed(result: ExpirationWriteOffReversalResult) {
+    const productCode = result.expiration.storeProduct.product.code;
+
+    void loadExpirations(
+      expirationPage.pagination.page,
+      search,
+      statusFilter,
+      storeFilter,
+    );
+    setSuccessMessage(
+      `Baixa de ${productCode} estornada. O lote agora possui ${result.expiration.quantity} unidades.`,
     );
   }
 
@@ -946,6 +961,7 @@ export function ExpirationsManager({
         <ExpirationWriteOffModal
           isAdmin={isAdmin}
           onClose={closeWriteOff}
+          onReversed={handleWriteOffReversed}
           onSaved={handleWriteOffSaved}
           stores={stores}
         />
