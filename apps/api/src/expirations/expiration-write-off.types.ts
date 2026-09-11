@@ -1,6 +1,24 @@
 import type { Prisma } from '../../generated/prisma/client';
 import type { ExpirationRecord } from './expirations.service';
 
+export const expirationWriteOffReversalSelect = {
+  id: true,
+  restoredQuantity: true,
+  previousQuantity: true,
+  resultingQuantity: true,
+  reason: true,
+  notes: true,
+  createdAt: true,
+  reversedBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+    },
+  },
+} satisfies Prisma.ProductLotWriteOffReversalSelect;
+
 export const expirationWriteOffSelect = {
   id: true,
   reason: true,
@@ -9,6 +27,9 @@ export const expirationWriteOffSelect = {
   remainingQuantity: true,
   notes: true,
   createdAt: true,
+  reversal: {
+    select: expirationWriteOffReversalSelect,
+  },
   performedBy: {
     select: {
       id: true,
@@ -52,6 +73,11 @@ export type ExpirationWriteOffRecord = Prisma.ProductLotWriteOffGetPayload<{
 }>;
 
 export interface ExpirationWriteOffResult {
+  expiration: ExpirationRecord;
+  writeOff: ExpirationWriteOffRecord;
+}
+
+export interface ExpirationWriteOffReversalResult {
   expiration: ExpirationRecord;
   writeOff: ExpirationWriteOffRecord;
 }

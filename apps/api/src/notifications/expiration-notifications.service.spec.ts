@@ -136,6 +136,7 @@ describe('ExpirationNotificationsService', () => {
       remainingQuantity: 1,
       notes: null,
       createdAt: new Date('2026-08-31T15:00:00.000Z'),
+      reversal: null,
       performedBy: {
         id: '00000000-0000-4000-8000-000000000601',
         name: 'Usuária da loja',

@@ -33,6 +33,7 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - baixa rápida por leitor de código de barras USB ou busca manual;
 - baixa parcial por venda, vencimento ou descarte, com encerramento automático do lote quando o saldo chega a zero;
 - histórico auditável das baixas com responsável, quantidade e saldo do lote;
+- estorno auditável de baixas realizadas por engano, com restauração do saldo e identificação do responsável;
 - acompanhamento de produtos vencidos, próximos de 30 dias, de 31 dias a 3 meses, de 3 a 6 meses, de 6 meses a 1 ano e acima de 1 ano.
 
 ### Usuário de loja
@@ -65,6 +66,8 @@ Durante a operação, a tela informa se o leitor está pronto, buscando ou se o 
 Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, as buscas de Produtos, Nova validade, Validades, Alertas e Baixa rápida validam o dígito verificador e também procuram pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
 
 A operação aceita quantidades parciais e os motivos `Vendido`, `Vencido` e `Descartado`. Quando o saldo chega a zero, o lote é inativado automaticamente e deixa de aparecer nos alertas ativos. Todas as baixas permanecem no histórico com data, usuário responsável, quantidade anterior e saldo restante.
+
+Uma baixa registrada por engano pode ser estornada pelo histórico. O sistema restaura a quantidade, reativa o lote quando necessário e registra separadamente o responsável, o motivo e o horário do estorno. A baixa original nunca é apagada e cada baixa pode ser estornada somente uma vez.
 
 ### Central de alertas
 
@@ -600,6 +603,7 @@ Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 | `GET`   | `/expirations/export`   | Administrador e usuário de loja |
 | `GET`   | `/expirations/write-off/search` | Administrador e usuário de loja |
 | `GET`   | `/expirations/write-offs` | Administrador e usuário de loja |
+| `POST`  | `/expirations/write-offs/:id/reversal` | Administrador e usuário de loja |
 | `POST`  | `/expirations`          | Administrador e usuário de loja |
 | `POST`  | `/expirations/:id/write-off` | Administrador e usuário de loja |
 | `PATCH` | `/expirations/:id`      | Administrador e usuário de loja |

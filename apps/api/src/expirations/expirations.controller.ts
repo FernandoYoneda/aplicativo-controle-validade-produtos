@@ -20,6 +20,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateExpirationDto } from './dto/create-expiration.dto';
 import { CreateWriteOffDto } from './dto/create-write-off.dto';
+import { CreateWriteOffReversalDto } from './dto/create-write-off-reversal.dto';
 import { ListExpirationAlertsQueryDto } from './dto/list-expiration-alerts-query.dto';
 import {
   FilterExpirationsQueryDto,
@@ -44,6 +45,7 @@ import {
 } from './expirations.service';
 import type {
   ExpirationWriteOffRecord,
+  ExpirationWriteOffReversalResult,
   ExpirationWriteOffResult,
 } from './expiration-write-off.types';
 
@@ -124,6 +126,16 @@ export class ExpirationsController {
     @Req() request: AuthenticatedRequest,
   ): Promise<ExpirationWriteOffRecord[]> {
     return this.expirationsService.findWriteOffs(query, request.user);
+  }
+
+  @Post('write-offs/:id/reversal')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  reverseWriteOff(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CreateWriteOffReversalDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpirationWriteOffReversalResult> {
+    return this.expirationsService.reverseWriteOff(id, dto, request.user);
   }
 
   @Post()
