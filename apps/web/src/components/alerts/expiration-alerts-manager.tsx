@@ -98,6 +98,12 @@ export function ExpirationAlertsManager({
   const [review, setReview] =
     useState<ExpirationAlertReviewFilter>(initialFilters.review);
   const [storeId, setStoreId] = useState(initialFilters.storeId);
+  const [areFiltersOpen, setAreFiltersOpen] = useState(
+    initialFilters.search !== "" ||
+      initialFilters.status !== "all" ||
+      initialFilters.review !== "all" ||
+      initialFilters.storeId !== "",
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -242,6 +248,12 @@ export function ExpirationAlertsManager({
     status !== "all" ||
     review !== "all" ||
     (isAdmin && storeId !== "");
+  const activeFilterCount = [
+    search.trim() !== "",
+    status !== "all",
+    review !== "all",
+    isAdmin && storeId !== "",
+  ].filter(Boolean).length;
 
   function clearFilters(): void {
     setSearch("");
@@ -249,6 +261,7 @@ export function ExpirationAlertsManager({
     setReview("all");
     setStoreId("");
     setSuccessMessage("");
+    setAreFiltersOpen(false);
   }
 
   function selectSummaryFilter(
@@ -358,7 +371,28 @@ export function ExpirationAlertsManager({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr]">
+          <button
+            aria-controls="alert-filters"
+            aria-expanded={areFiltersOpen}
+            className="mt-5 flex min-h-11 w-full items-center justify-between rounded-xl border border-[var(--casabella-border)] bg-[var(--casabella-background)] px-4 text-sm font-semibold text-[var(--casabella-teal-dark)] lg:hidden"
+            onClick={() => setAreFiltersOpen((isOpen) => !isOpen)}
+            type="button"
+          >
+            <span>Filtros</span>
+            <span className="flex items-center gap-2">
+              {activeFilterCount > 0 ? (
+                <span className="rounded-full bg-[var(--casabella-teal)] px-2 py-0.5 text-xs text-white">
+                  {activeFilterCount} ativo{activeFilterCount === 1 ? "" : "s"}
+                </span>
+              ) : null}
+              <span aria-hidden="true">{areFiltersOpen ? "−" : "+"}</span>
+            </span>
+          </button>
+
+          <div
+            className={`${areFiltersOpen ? "grid" : "hidden"} mt-4 gap-4 lg:mt-5 lg:grid lg:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr]`}
+            id="alert-filters"
+          >
             <label className="text-sm font-semibold text-[var(--casabella-graphite)]">
               Buscar alerta
               <input
@@ -460,21 +494,21 @@ export function ExpirationAlertsManager({
               ) : null}
             </div>
           ) : (
-            <div className="divide-y divide-[var(--casabella-border)]">
+            <div className="space-y-3 bg-[var(--casabella-background)] p-3 sm:divide-y sm:divide-[var(--casabella-border)] sm:space-y-0 sm:bg-white sm:p-0">
               {alertPage.items.map((alert) => {
                 const product = alert.storeProduct.product;
                 const store = alert.storeProduct.store;
                 return (
                   <article
-                    className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,2fr)_1fr_0.7fr_1.35fr] xl:items-center"
+                    className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--casabella-border)] bg-white p-4 shadow-sm sm:rounded-none sm:border-0 sm:p-6 sm:shadow-none xl:grid-cols-[minmax(0,2fr)_1fr_0.7fr_1.35fr] xl:items-center"
                     key={alert.id}
                   >
-                    <div className="min-w-0">
+                    <div className="col-span-2 min-w-0 xl:col-span-1">
                       <p className="text-xs font-bold tracking-[0.12em] text-[var(--casabella-muted)] uppercase">
                         Produto
                       </p>
                       <p
-                        className="mt-1 truncate font-bold text-[var(--casabella-graphite)]"
+                        className="mt-1 break-words font-bold text-[var(--casabella-graphite)] xl:truncate"
                         title={`${product.code} — ${product.name}`}
                       >
                         {product.code} — {product.name}
@@ -510,9 +544,9 @@ export function ExpirationAlertsManager({
                       </p>
                     </div>
 
-                    <div className="xl:text-right">
+                    <div className="col-span-2 xl:col-span-1 xl:text-right">
                       {alert.acknowledgement ? (
-                        <div className="inline-block rounded-xl bg-emerald-50 px-4 py-3 text-left text-sm text-emerald-800">
+                        <div className="inline-block w-full rounded-xl bg-emerald-50 px-4 py-3 text-left text-sm text-emerald-800 xl:w-auto">
                           <p className="font-bold">Verificado</p>
                           <p className="mt-1">
                             {alert.acknowledgement.user.name} ·{" "}
@@ -523,7 +557,7 @@ export function ExpirationAlertsManager({
                         </div>
                       ) : (
                         <button
-                          className="h-11 rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--casabella-teal-dark)] disabled:cursor-wait disabled:opacity-60"
+                          className="h-11 w-full rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--casabella-teal-dark)] disabled:cursor-wait disabled:opacity-60 xl:w-auto"
                           disabled={acknowledgingId === alert.id}
                           onClick={() => void acknowledge(alert)}
                           type="button"
@@ -547,7 +581,7 @@ export function ExpirationAlertsManager({
                 : `Exibindo página ${alertPage.pagination.page} de ${alertPage.pagination.totalPages} · ${alertPage.pagination.totalItems} ${alertPage.pagination.totalItems === 1 ? "alerta" : "alertas"}`}
             </p>
             {alertPage.pagination.totalPages > 1 ? (
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
                 <button
                   className="h-9 rounded-lg border border-[var(--casabella-border)] px-3 disabled:opacity-40"
                   disabled={isLoading || alertPage.pagination.page === 1}
