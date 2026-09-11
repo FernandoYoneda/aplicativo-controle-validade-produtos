@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  pendingAlertCountChangedEvent,
+} from "../../lib/alert-events";
 import type { AuthenticatedUser } from "../../types/auth";
+import type { ExpirationAlertPage } from "../../types/expiration";
 import { LogoutButton } from "../auth/logout-button";
 
 interface AppNavigationMenuProps {
@@ -111,13 +115,58 @@ export function AppNavigationMenu({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLElement>(null);
   const closeTimerRef = useRef<number | null>(null);
+  const pendingRequestRef = useRef<AbortController | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isRendered, setIsRendered] = useState(false);
+  const [pendingAlertCount, setPendingAlertCount] = useState(0);
 
   const isAdmin = user.role === "ADMIN";
   const availableItems = navigationItems.filter(
     (item) => !item.adminOnly || isAdmin,
   );
+
+  const loadPendingAlertCount = useCallback(async () => {
+    pendingRequestRef.current?.abort();
+    const controller = new AbortController();
+    pendingRequestRef.current = controller;
+
+    try {
+      const response = await fetch(
+        "/api/expiration-alerts?page=1&pageSize=1",
+        { cache: "no-store", signal: controller.signal },
+      );
+
+      if (!response.ok) return;
+
+      const page = (await response.json()) as ExpirationAlertPage;
+      setPendingAlertCount(page.summary.pending);
+    } catch {
+      // Mantém o último valor conhecido quando a atualização não está disponível.
+    }
+  }, []);
+
+  useEffect(() => {
+    function refreshPendingAlertCount() {
+      void loadPendingAlertCount();
+    }
+
+    const initialLoadTimer = window.setTimeout(refreshPendingAlertCount, 0);
+    window.addEventListener("focus", refreshPendingAlertCount);
+    window.addEventListener(
+      pendingAlertCountChangedEvent,
+      refreshPendingAlertCount,
+    );
+
+    return () => {
+      window.clearTimeout(initialLoadTimer);
+      pendingRequestRef.current?.abort();
+      window.removeEventListener("focus", refreshPendingAlertCount);
+      window.removeEventListener(
+        pendingAlertCountChangedEvent,
+        refreshPendingAlertCount,
+      );
+    };
+  }, [loadPendingAlertCount]);
 
   useEffect(() => {
     if (!isRendered) return;
@@ -173,6 +222,7 @@ export function AppNavigationMenu({
       closeTimerRef.current = null;
     }
 
+    void loadPendingAlertCount();
     setIsRendered(true);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -196,7 +246,12 @@ export function AppNavigationMenu({
       <button
         aria-controls="application-navigation"
         aria-expanded={isOpen}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-bold text-[var(--casabella-teal-dark)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)]"
+        aria-label={
+          pendingAlertCount > 0
+            ? `Abrir menu, ${pendingAlertCount} ${pendingAlertCount === 1 ? "alerta pendente" : "alertas pendentes"}`
+            : "Abrir menu"
+        }
+        className="relative inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--casabella-border)] bg-white px-3 text-sm font-bold text-[var(--casabella-teal-dark)] transition hover:border-[var(--casabella-teal)] hover:bg-[var(--casabella-teal-soft)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)]"
         onClick={openMenu}
         ref={menuButtonRef}
         type="button"
@@ -207,7 +262,11 @@ export function AppNavigationMenu({
           <span className="h-0.5 w-5 rounded-full bg-current" />
         </span>
         <span className="hidden sm:inline">Menu</span>
-        <span className="sr-only sm:hidden">Abrir menu</span>
+        {pendingAlertCount > 0 ? (
+          <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white shadow-sm">
+            {pendingAlertCount > 99 ? "99+" : pendingAlertCount}
+          </span>
+        ) : null}
       </button>
 
       {isRendered ? (
@@ -277,11 +336,26 @@ export function AppNavigationMenu({
                       >
                         <NavigationIcon name={item.icon} />
                         <span>{item.label}</span>
-                        {isCurrent ? (
-                          <span className="ml-auto text-xs font-medium text-white/70">
-                            Atual
-                          </span>
-                        ) : null}
+                        <span className="ml-auto flex items-center gap-2">
+                          {item.icon === "alerts" && pendingAlertCount > 0 ? (
+                            <span
+                              className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
+                                isCurrent
+                                  ? "bg-white text-[var(--casabella-teal-dark)]"
+                                  : "bg-red-600 text-white"
+                              }`}
+                            >
+                              {pendingAlertCount > 99
+                                ? "99+"
+                                : pendingAlertCount}
+                            </span>
+                          ) : null}
+                          {isCurrent ? (
+                            <span className="text-xs font-medium text-white/70">
+                              Atual
+                            </span>
+                          ) : null}
+                        </span>
                       </Link>
                     </li>
                   );

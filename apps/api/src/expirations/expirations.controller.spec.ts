@@ -81,6 +81,7 @@ describe('ExpirationsController', () => {
     searchWriteOffCandidates: jest.fn(),
     findWriteOffs: jest.fn(),
     writeOff: jest.fn(),
+    reverseWriteOff: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -293,6 +294,25 @@ describe('ExpirationsController', () => {
     ).resolves.toEqual(result);
     expect(expirationsServiceMock.writeOff).toHaveBeenCalledWith(
       expirationId,
+      dto,
+      authenticatedUser,
+    );
+  });
+
+  it('should delegate a write-off reversal to the service', async () => {
+    const writeOffId = '00000000-0000-4000-8000-000000000701';
+    const dto = {
+      reason: 'Baixa registrada por engano',
+      notes: 'Conferido no caixa',
+    };
+    const result = { expiration: { ...expiration, quantity: 12 } };
+    expirationsServiceMock.reverseWriteOff.mockResolvedValue(result);
+
+    await expect(
+      controller.reverseWriteOff(writeOffId, dto, request),
+    ).resolves.toEqual(result);
+    expect(expirationsServiceMock.reverseWriteOff).toHaveBeenCalledWith(
+      writeOffId,
       dto,
       authenticatedUser,
     );

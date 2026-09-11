@@ -6,6 +6,7 @@ import type {
   ExpirationRecord,
   ExpirationWriteOffReason,
   ExpirationWriteOffRecord,
+  ExpirationWriteOffReversalResult,
   ExpirationWriteOffResult,
 } from "../../types/expiration";
 import type { Store } from "../../types/store";
@@ -14,6 +15,7 @@ interface ExpirationWriteOffModalProps {
   isAdmin: boolean;
   stores: Store[];
   onClose: () => void;
+  onReversed: (result: ExpirationWriteOffReversalResult) => void;
   onSaved: (result: ExpirationWriteOffResult) => void;
 }
 
@@ -69,6 +71,7 @@ export function ExpirationWriteOffModal({
   isAdmin,
   stores,
   onClose,
+  onReversed,
   onSaved,
 }: ExpirationWriteOffModalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +89,10 @@ export function ExpirationWriteOffModal({
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [reversalTargetId, setReversalTargetId] = useState("");
+  const [reversalReason, setReversalReason] = useState("");
+  const [reversalNotes, setReversalNotes] = useState("");
+  const [isReversing, setIsReversing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -284,6 +291,61 @@ export function ExpirationWriteOffModal({
       provideFeedback("error");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  function cancelReversal() {
+    setReversalTargetId("");
+    setReversalReason("");
+    setReversalNotes("");
+  }
+
+  async function submitReversal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reversalTargetId || reversalReason.trim().length < 3) {
+      setError("Informe o motivo do estorno com pelo menos 3 caracteres.");
+      return;
+    }
+
+    setIsReversing(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(
+        `/api/expirations/write-offs/${reversalTargetId}/reversal`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: reversalReason.trim(),
+            notes: reversalNotes.trim() || undefined,
+          }),
+        },
+      );
+      const data = (await response.json()) as unknown;
+      if (!response.ok) {
+        throw new Error(getResponseMessage(data, "Falha ao estornar a baixa."));
+      }
+
+      const result = data as ExpirationWriteOffReversalResult;
+      setHistory((current) =>
+        current.map((item) =>
+          item.id === result.writeOff.id ? result.writeOff : item,
+        ),
+      );
+      onReversed(result);
+      setSuccess(
+        `Baixa estornada. O lote agora possui ${result.expiration.quantity} unidades.`,
+      );
+      cancelReversal();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Falha ao estornar a baixa.",
+      );
+    } finally {
+      setIsReversing(false);
     }
   }
 
@@ -655,6 +717,100 @@ export function ExpirationWriteOffModal({
                         {item.notes}
                       </p>
                     ) : null}
+                    {item.reversal ? (
+                      <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                        <p className="font-bold">Baixa estornada</p>
+                        <p className="mt-1">
+                          {item.reversal.reversedBy.name} ·{" "}
+                          {new Intl.DateTimeFormat("pt-BR", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          }).format(new Date(item.reversal.createdAt))}
+                        </p>
+                        <p className="mt-1">
+                          Motivo: {item.reversal.reason} · saldo{" "}
+                          {item.reversal.previousQuantity} →{" "}
+                          {item.reversal.resultingQuantity}
+                        </p>
+                        {item.reversal.notes ? (
+                          <p className="mt-1">{item.reversal.notes}</p>
+                        ) : null}
+                      </div>
+                    ) : reversalTargetId === item.id ? (
+                      <form
+                        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                        onSubmit={submitReversal}
+                      >
+                        <p className="text-sm font-bold text-amber-900">
+                          Confirmar estorno de {item.quantity} unidade(s)
+                        </p>
+                        <p className="mt-1 text-xs text-amber-800">
+                          A quantidade será devolvida ao lote e esta correção
+                          ficará registrada no histórico.
+                        </p>
+                        <label className="mt-4 block text-sm font-semibold">
+                          Motivo do estorno
+                          <input
+                            autoFocus
+                            className="mt-2 h-11 w-full rounded-xl border border-amber-300 bg-white px-3"
+                            maxLength={200}
+                            minLength={3}
+                            onChange={(event) =>
+                              setReversalReason(event.target.value)
+                            }
+                            placeholder="Ex.: baixa registrada por engano"
+                            required
+                            value={reversalReason}
+                          />
+                        </label>
+                        <label className="mt-3 block text-sm font-semibold">
+                          Observação (opcional)
+                          <textarea
+                            className="mt-2 min-h-20 w-full rounded-xl border border-amber-300 bg-white p-3"
+                            maxLength={500}
+                            onChange={(event) =>
+                              setReversalNotes(event.target.value)
+                            }
+                            value={reversalNotes}
+                          />
+                        </label>
+                        <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                          <button
+                            className="h-10 rounded-xl border border-[var(--casabella-border)] bg-white px-4 font-semibold"
+                            disabled={isReversing}
+                            onClick={cancelReversal}
+                            type="button"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            className="h-10 rounded-xl bg-amber-700 px-4 font-bold text-white disabled:opacity-50"
+                            disabled={
+                              isReversing || reversalReason.trim().length < 3
+                            }
+                            type="submit"
+                          >
+                            {isReversing ? "Estornando..." : "Confirmar estorno"}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          className="rounded-xl border border-amber-300 px-4 py-2 text-sm font-bold text-amber-800"
+                          onClick={() => {
+                            setError("");
+                            setSuccess("");
+                            setReversalTargetId(item.id);
+                            setReversalReason("");
+                            setReversalNotes("");
+                          }}
+                          type="button"
+                        >
+                          Estornar baixa
+                        </button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>

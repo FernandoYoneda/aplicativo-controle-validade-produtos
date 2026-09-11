@@ -19,6 +19,7 @@ import { ExpirationNotificationsService } from '../notifications/expiration-noti
 import { extractEmbeddedProductCodeFromEan13 } from '../products/product-code-matching';
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
 import type { CreateWriteOffDto } from './dto/create-write-off.dto';
+import type { CreateWriteOffReversalDto } from './dto/create-write-off-reversal.dto';
 import {
   ExpirationAlertReviewFilter,
   ExpirationAlertStatusFilter,
@@ -45,8 +46,10 @@ import type {
 } from './expiration-page.types';
 import {
   type ExpirationWriteOffRecord,
+  type ExpirationWriteOffReversalResult,
   type ExpirationWriteOffResult,
   expirationWriteOffSelect,
+  expirationWriteOffReversalSelect,
 } from './expiration-write-off.types';
 
 interface ExpirationDateLimits {
@@ -671,6 +674,79 @@ export class ExpirationsService {
     }
   }
 
+  async reverseWriteOff(
+    id: string,
+    dto: CreateWriteOffReversalDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationWriteOffReversalResult> {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const writeOff = await transaction.productLotWriteOff.findUnique({
+          where: { id },
+          select: expirationWriteOffSelect,
+        });
+
+        if (!writeOff) {
+          throw new NotFoundException('Baixa não encontrada.');
+        }
+
+        this.ensureStoreAccess(user, writeOff.productLot.storeProduct.store.id);
+
+        if (writeOff.reversal) {
+          throw new ConflictException('Esta baixa já foi estornada.');
+        }
+
+        const previousQuantity = writeOff.productLot.quantity;
+        const resultingQuantity = previousQuantity + writeOff.quantity;
+        const expiration = await transaction.productLot.update({
+          where: {
+            id: writeOff.productLot.id,
+            quantity: previousQuantity,
+          },
+          data: {
+            quantity: resultingQuantity,
+            isActive: true,
+          },
+          select: expirationSelect,
+        });
+        await transaction.expirationAlertAcknowledgement.deleteMany({
+          where: { productLotId: writeOff.productLot.id },
+        });
+        const reversal = await transaction.productLotWriteOffReversal.create({
+          data: {
+            writeOffId: writeOff.id,
+            reversedByUserId: user.id,
+            restoredQuantity: writeOff.quantity,
+            previousQuantity,
+            resultingQuantity,
+            reason: dto.reason,
+            notes: dto.notes ?? null,
+          },
+          select: expirationWriteOffReversalSelect,
+        });
+
+        return {
+          expiration,
+          writeOff: {
+            ...writeOff,
+            productLot: expiration,
+            reversal,
+          },
+        };
+      });
+    } catch (error: unknown) {
+      if (this.hasPrismaErrorCode(error, 'P2002')) {
+        throw new ConflictException('Esta baixa já foi estornada.');
+      }
+      if (this.hasPrismaErrorCode(error, 'P2025')) {
+        throw new ConflictException(
+          'O saldo deste lote foi alterado por outra operação. Atualize o histórico e tente novamente.',
+        );
+      }
+      throw error;
+    }
+  }
+
   async create(
     createExpirationDto: CreateExpirationDto,
     user: AuthenticatedUser,
@@ -1074,6 +1150,8 @@ export class ExpirationsService {
     } = dateLimits;
 
     switch (status) {
+      case ExpirationStatusFilter.ACTIVE:
+        return { isActive: true };
       case ExpirationStatusFilter.EXPIRED:
         return {
           isActive: true,

@@ -36,6 +36,7 @@ export interface ExpirationRecord {
 
 export type ExpirationStatusFilter =
   | "all"
+  | "active"
   | "expired"
   | "upcoming"
   | "threeMonths"
@@ -125,6 +126,22 @@ export interface UpdateExpirationPayload {
 
 export type ExpirationWriteOffReason = "SOLD" | "EXPIRED" | "DISCARDED";
 
+export interface ExpirationWriteOffReversal {
+  id: string;
+  restoredQuantity: number;
+  previousQuantity: number;
+  resultingQuantity: number;
+  reason: string;
+  notes: string | null;
+  createdAt: string;
+  reversedBy: {
+    id: string;
+    name: string;
+    email: string;
+    role: "ADMIN" | "STORE_USER";
+  };
+}
+
 export interface ExpirationWriteOffRecord {
   id: string;
   reason: ExpirationWriteOffReason;
@@ -133,6 +150,7 @@ export interface ExpirationWriteOffRecord {
   remainingQuantity: number;
   notes: string | null;
   createdAt: string;
+  reversal: ExpirationWriteOffReversal | null;
   performedBy: {
     id: string;
     name: string;
@@ -154,6 +172,16 @@ export interface CreateWriteOffPayload {
 }
 
 export interface ExpirationWriteOffResult {
+  expiration: ExpirationRecord;
+  writeOff: ExpirationWriteOffRecord;
+}
+
+export interface CreateWriteOffReversalPayload {
+  reason: string;
+  notes?: string;
+}
+
+export interface ExpirationWriteOffReversalResult {
   expiration: ExpirationRecord;
   writeOff: ExpirationWriteOffRecord;
 }

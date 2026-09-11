@@ -9,6 +9,23 @@ interface AppHeaderProps {
   user: AuthenticatedUser;
 }
 
+function ScanIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      viewBox="0 0 24 24"
+    >
+      <path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 9v6M10 9v6M14 9v6M17 9v6" />
+    </svg>
+  );
+}
+
 export function AppHeader({ section, user }: AppHeaderProps) {
   const appVersion = process.env.APP_VERSION ?? "desenvolvimento";
 
@@ -48,6 +65,23 @@ export function AppHeader({ section, user }: AppHeaderProps) {
               {user.role === "ADMIN" ? "Administrador" : "Usuário da loja"}
             </p>
           </div>
+
+          <Link
+            className="hidden h-11 items-center justify-center gap-2 rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[var(--casabella-teal-dark)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] md:inline-flex"
+            href="/expirations?action=write-off"
+          >
+            <ScanIcon />
+            Escanear produto
+          </Link>
+
+          <Link
+            aria-label="Escanear produto para dar baixa"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--casabella-teal)] text-white shadow-sm transition hover:bg-[var(--casabella-teal-dark)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] md:hidden"
+            href="/expirations?action=write-off"
+            title="Escanear produto"
+          >
+            <ScanIcon />
+          </Link>
 
           <AppNavigationMenu appVersion={appVersion} user={user} />
         </div>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { notifyPendingAlertCountChanged } from "../../lib/alert-events";
 import type { ApiErrorResponse } from "../../types/auth";
 import type {
   ExpirationAlertItem,
@@ -14,6 +15,13 @@ import type { Store } from "../../types/store";
 
 interface ExpirationAlertsManagerProps {
   initialPage: ExpirationAlertPage;
+  initialFilters: {
+    page: number;
+    review: ExpirationAlertReviewFilter;
+    search: string;
+    status: ExpirationAlertStatusFilter;
+    storeId: string;
+  };
   stores: Store[];
   isAdmin: boolean;
 }
@@ -75,6 +83,7 @@ function getVisiblePages(currentPage: number, totalPages: number): number[] {
 }
 
 export function ExpirationAlertsManager({
+  initialFilters,
   initialPage,
   stores,
   isAdmin,
@@ -83,10 +92,18 @@ export function ExpirationAlertsManager({
   const activeRequest = useRef<AbortController | null>(null);
   const firstRender = useRef(true);
   const [alertPage, setAlertPage] = useState(initialPage);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<ExpirationAlertStatusFilter>("all");
-  const [review, setReview] = useState<ExpirationAlertReviewFilter>("all");
-  const [storeId, setStoreId] = useState("");
+  const [search, setSearch] = useState(initialFilters.search);
+  const [status, setStatus] =
+    useState<ExpirationAlertStatusFilter>(initialFilters.status);
+  const [review, setReview] =
+    useState<ExpirationAlertReviewFilter>(initialFilters.review);
+  const [storeId, setStoreId] = useState(initialFilters.storeId);
+  const [areFiltersOpen, setAreFiltersOpen] = useState(
+    initialFilters.search !== "" ||
+      initialFilters.status !== "all" ||
+      initialFilters.review !== "all" ||
+      initialFilters.storeId !== "",
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -106,6 +123,19 @@ export function ExpirationAlertsManager({
 
       if (search.trim()) parameters.set("search", search.trim());
       if (isAdmin && storeId) parameters.set("storeId", storeId);
+
+      const browserParameters = new URLSearchParams();
+      if (page > 1) browserParameters.set("page", String(page));
+      if (search.trim()) browserParameters.set("search", search.trim());
+      if (status !== "all") browserParameters.set("status", status);
+      if (review !== "all") browserParameters.set("review", review);
+      if (isAdmin && storeId) browserParameters.set("storeId", storeId);
+      const browserQuery = browserParameters.toString();
+      window.history.replaceState(
+        null,
+        "",
+        browserQuery ? `/alerts?${browserQuery}` : "/alerts",
+      );
 
       setErrorMessage("");
       setIsLoading(true);
@@ -196,6 +226,7 @@ export function ExpirationAlertsManager({
       }
 
       setSuccessMessage("Alerta marcado como verificado.");
+      notifyPendingAlertCountChanged();
       await loadAlerts(alertPage.pagination.page);
     } catch {
       setErrorMessage("Não foi possível conectar ao serviço de alertas.");
@@ -212,32 +243,71 @@ export function ExpirationAlertsManager({
       ),
     [alertPage.pagination.page, alertPage.pagination.totalPages],
   );
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    status !== "all" ||
+    review !== "all" ||
+    (isAdmin && storeId !== "");
+  const activeFilterCount = [
+    search.trim() !== "",
+    status !== "all",
+    review !== "all",
+    isAdmin && storeId !== "",
+  ].filter(Boolean).length;
+
+  function clearFilters(): void {
+    setSearch("");
+    setStatus("all");
+    setReview("all");
+    setStoreId("");
+    setSuccessMessage("");
+    setAreFiltersOpen(false);
+  }
+
+  function selectSummaryFilter(
+    nextStatus: ExpirationAlertStatusFilter,
+    nextReview: ExpirationAlertReviewFilter,
+  ): void {
+    setStatus(nextStatus);
+    setReview(nextReview);
+    setSuccessMessage("");
+  }
 
   const summaryCards = [
     {
       label: "Alertas",
       value: alertPage.summary.total,
       className: "text-[var(--casabella-teal-dark)]",
+      status: "all" as const,
+      review: "all" as const,
     },
     {
       label: "Vencidos",
       value: alertPage.summary.expired,
       className: "text-red-700",
+      status: "expired" as const,
+      review: "all" as const,
     },
     {
       label: "Próximos 30 dias",
       value: alertPage.summary.upcoming,
       className: "text-amber-700",
+      status: "upcoming" as const,
+      review: "all" as const,
     },
     {
       label: "Pendentes",
       value: alertPage.summary.pending,
       className: "text-[var(--casabella-coral)]",
+      status: "all" as const,
+      review: "pending" as const,
     },
     {
       label: "Verificados",
       value: alertPage.summary.reviewed,
       className: "text-emerald-700",
+      status: "all" as const,
+      review: "reviewed" as const,
     },
   ];
 
@@ -245,9 +315,16 @@ export function ExpirationAlertsManager({
     <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => (
-          <article
-            className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm"
+          <button
+            aria-pressed={status === card.status && review === card.review}
+            className={`group rounded-2xl border bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--casabella-teal)] hover:shadow-[0_12px_30px_rgba(0,67,77,0.08)] focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[var(--casabella-coral)] ${
+              status === card.status && review === card.review
+                ? "border-[var(--casabella-teal)] ring-2 ring-[var(--casabella-teal-soft)]"
+                : "border-[var(--casabella-border)]"
+            }`}
             key={card.label}
+            onClick={() => selectSummaryFilter(card.status, card.review)}
+            type="button"
           >
             <p className="text-sm text-[var(--casabella-muted)]">
               {card.label}
@@ -255,7 +332,10 @@ export function ExpirationAlertsManager({
             <p className={`mt-2 text-3xl font-bold ${card.className}`}>
               {card.value}
             </p>
-          </article>
+            <span className="mt-3 inline-flex text-xs font-semibold text-[var(--casabella-teal)] opacity-75 transition group-hover:opacity-100">
+              Filtrar lista <span aria-hidden="true">→</span>
+            </span>
+          </button>
         ))}
       </div>
 
@@ -270,17 +350,49 @@ export function ExpirationAlertsManager({
                 Verifique os lotes e registre o acompanhamento realizado.
               </p>
             </div>
-            <button
-              className="h-10 rounded-xl border border-[var(--casabella-border)] px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:opacity-50"
-              disabled={isLoading}
-              onClick={() => void loadAlerts(alertPage.pagination.page)}
-              type="button"
-            >
-              Atualizar lista
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {hasActiveFilters ? (
+                <button
+                  className="h-10 rounded-xl px-4 text-sm font-semibold text-[var(--casabella-muted)] transition hover:bg-[var(--casabella-background)] hover:text-[var(--casabella-teal-dark)]"
+                  onClick={clearFilters}
+                  type="button"
+                >
+                  Limpar filtros
+                </button>
+              ) : null}
+              <button
+                className="h-10 rounded-xl border border-[var(--casabella-border)] px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)] disabled:opacity-50"
+                disabled={isLoading}
+                onClick={() => void loadAlerts(alertPage.pagination.page)}
+                type="button"
+              >
+                Atualizar lista
+              </button>
+            </div>
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr]">
+          <button
+            aria-controls="alert-filters"
+            aria-expanded={areFiltersOpen}
+            className="mt-5 flex min-h-11 w-full items-center justify-between rounded-xl border border-[var(--casabella-border)] bg-[var(--casabella-background)] px-4 text-sm font-semibold text-[var(--casabella-teal-dark)] lg:hidden"
+            onClick={() => setAreFiltersOpen((isOpen) => !isOpen)}
+            type="button"
+          >
+            <span>Filtros</span>
+            <span className="flex items-center gap-2">
+              {activeFilterCount > 0 ? (
+                <span className="rounded-full bg-[var(--casabella-teal)] px-2 py-0.5 text-xs text-white">
+                  {activeFilterCount} ativo{activeFilterCount === 1 ? "" : "s"}
+                </span>
+              ) : null}
+              <span aria-hidden="true">{areFiltersOpen ? "−" : "+"}</span>
+            </span>
+          </button>
+
+          <div
+            className={`${areFiltersOpen ? "grid" : "hidden"} mt-4 gap-4 lg:mt-5 lg:grid lg:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr]`}
+            id="alert-filters"
+          >
             <label className="text-sm font-semibold text-[var(--casabella-graphite)]">
               Buscar alerta
               <input
@@ -367,26 +479,36 @@ export function ExpirationAlertsManager({
                 Nenhum alerta encontrado
               </p>
               <p className="mt-2 text-sm text-[var(--casabella-muted)]">
-                Altere os filtros ou aguarde novos produtos entrarem no período
-                de atenção.
+                {hasActiveFilters
+                  ? "Não há registros para a combinação de filtros selecionada."
+                  : "Aguarde novos produtos entrarem no período de atenção."}
               </p>
+              {hasActiveFilters ? (
+                <button
+                  className="mt-4 h-10 rounded-xl border border-[var(--casabella-border)] px-4 text-sm font-semibold text-[var(--casabella-teal)] transition hover:border-[var(--casabella-teal)]"
+                  onClick={clearFilters}
+                  type="button"
+                >
+                  Limpar filtros
+                </button>
+              ) : null}
             </div>
           ) : (
-            <div className="divide-y divide-[var(--casabella-border)]">
+            <div className="space-y-3 bg-[var(--casabella-background)] p-3 sm:divide-y sm:divide-[var(--casabella-border)] sm:space-y-0 sm:bg-white sm:p-0">
               {alertPage.items.map((alert) => {
                 const product = alert.storeProduct.product;
                 const store = alert.storeProduct.store;
                 return (
                   <article
-                    className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,2fr)_1fr_0.7fr_1.35fr] xl:items-center"
+                    className="grid grid-cols-2 gap-4 rounded-xl border border-[var(--casabella-border)] bg-white p-4 shadow-sm sm:rounded-none sm:border-0 sm:p-6 sm:shadow-none xl:grid-cols-[minmax(0,2fr)_1fr_0.7fr_1.35fr] xl:items-center"
                     key={alert.id}
                   >
-                    <div className="min-w-0">
+                    <div className="col-span-2 min-w-0 xl:col-span-1">
                       <p className="text-xs font-bold tracking-[0.12em] text-[var(--casabella-muted)] uppercase">
                         Produto
                       </p>
                       <p
-                        className="mt-1 truncate font-bold text-[var(--casabella-graphite)]"
+                        className="mt-1 break-words font-bold text-[var(--casabella-graphite)] xl:truncate"
                         title={`${product.code} — ${product.name}`}
                       >
                         {product.code} — {product.name}
@@ -422,9 +544,9 @@ export function ExpirationAlertsManager({
                       </p>
                     </div>
 
-                    <div className="xl:text-right">
+                    <div className="col-span-2 xl:col-span-1 xl:text-right">
                       {alert.acknowledgement ? (
-                        <div className="inline-block rounded-xl bg-emerald-50 px-4 py-3 text-left text-sm text-emerald-800">
+                        <div className="inline-block w-full rounded-xl bg-emerald-50 px-4 py-3 text-left text-sm text-emerald-800 xl:w-auto">
                           <p className="font-bold">Verificado</p>
                           <p className="mt-1">
                             {alert.acknowledgement.user.name} ·{" "}
@@ -435,7 +557,7 @@ export function ExpirationAlertsManager({
                         </div>
                       ) : (
                         <button
-                          className="h-11 rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--casabella-teal-dark)] disabled:cursor-wait disabled:opacity-60"
+                          className="h-11 w-full rounded-xl bg-[var(--casabella-teal)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--casabella-teal-dark)] disabled:cursor-wait disabled:opacity-60 xl:w-auto"
                           disabled={acknowledgingId === alert.id}
                           onClick={() => void acknowledge(alert)}
                           type="button"
@@ -459,7 +581,7 @@ export function ExpirationAlertsManager({
                 : `Exibindo página ${alertPage.pagination.page} de ${alertPage.pagination.totalPages} · ${alertPage.pagination.totalItems} ${alertPage.pagination.totalItems === 1 ? "alerta" : "alertas"}`}
             </p>
             {alertPage.pagination.totalPages > 1 ? (
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
                 <button
                   className="h-9 rounded-lg border border-[var(--casabella-border)] px-3 disabled:opacity-40"
                   disabled={isLoading || alertPage.pagination.page === 1}
