@@ -61,6 +61,10 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 
 O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e finaliza com `Enter/CR` ou `Ctrl+J/LF`; a aplicação bloqueia o atalho de downloads do navegador, localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO). Essa proteção também funciona nos demais campos de leitura, como a busca de produto em `Nova validade`.
 
+### Relatório de movimentações
+
+A área `Movimentações` reúne baixas e estornos em uma linha do tempo auditável. A consulta permite buscar por produto, código, loja, lote ou responsável, filtrar por tipo, unidade e período, acompanhar as quantidades baixadas, restauradas e o saldo líquido, além de exportar o resultado para Excel. Usuários de loja visualizam apenas as movimentações da própria unidade.
+
 Durante a operação, a tela informa se o leitor está pronto, buscando ou se o produto foi localizado. Leituras duplicadas em sequência são ignoradas, códigos não encontrados ficam selecionados para serem substituídos pela próxima leitura e o foco retorna automaticamente ao campo após cada baixa. O som de confirmação é opcional e pode ser ativado no próprio modal.
 
 Para catálogos que utilizam o código interno embutido no EAN-13, como no padrão recebido do Boticário, as buscas de Produtos, Nova validade, Validades, Alertas e Baixa rápida validam o dígito verificador e também procuram pelos cinco dígitos anteriores a ele. Assim, o EAN `7891033859474` pode localizar com segurança o produto de código `85947`, mantendo prioridade para correspondências exatas do código de barras completo.
@@ -604,6 +608,8 @@ Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 | `GET`   | `/expirations/write-off/search` | Administrador e usuário de loja |
 | `GET`   | `/expirations/write-offs` | Administrador e usuário de loja |
 | `POST`  | `/expirations/write-offs/:id/reversal` | Administrador e usuário de loja |
+| `GET`   | `/expirations/inventory-movements` | Administrador e usuário de loja |
+| `GET`   | `/expirations/inventory-movements/export` | Administrador e usuário de loja |
 | `POST`  | `/expirations`          | Administrador e usuário de loja |
 | `POST`  | `/expirations/:id/write-off` | Administrador e usuário de loja |
 | `PATCH` | `/expirations/:id`      | Administrador e usuário de loja |

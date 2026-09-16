@@ -19,6 +19,7 @@ import {
   ExpirationAlertStatusFilter,
 } from './dto/list-expiration-alerts-query.dto';
 import { ExpirationStatusFilter } from './dto/list-expirations-query.dto';
+import { InventoryMovementTypeFilter } from './dto/list-inventory-movements-query.dto';
 import {
   type ExpirationRecord,
   ExpirationsService,
@@ -578,6 +579,133 @@ describe('ExpirationsService', () => {
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(transactionMock.productLot.update).not.toHaveBeenCalled();
+  });
+
+  it('should consolidate, filter and paginate inventory movements', async () => {
+    prismaServiceMock.productLotWriteOff.findMany.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000701',
+        reason: ProductLotWriteOffReason.SOLD,
+        quantity: 3,
+        previousQuantity: 10,
+        remainingQuantity: 7,
+        notes: 'Venda no caixa',
+        createdAt: new Date('2026-09-10T13:00:00.000Z'),
+        performedBy: adminUser,
+        productLot: expiration,
+        reversal: {
+          id: '00000000-0000-4000-8000-000000000801',
+          restoredQuantity: 3,
+          previousQuantity: 7,
+          resultingQuantity: 10,
+          reason: 'Venda registrada em duplicidade',
+          notes: 'Conferido no caixa',
+          createdAt: new Date('2026-09-11T14:00:00.000Z'),
+          reversedBy: storeUser,
+        },
+      },
+    ]);
+
+    const result = await service.findInventoryMovements(
+      {
+        page: 1,
+        pageSize: 20,
+        type: InventoryMovementTypeFilter.ALL,
+        search: 'caixa',
+      },
+      storeUser,
+    );
+
+    expect(prismaServiceMock.productLotWriteOff.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [{ productLot: { storeProduct: { storeId } } }, {}],
+        },
+      }),
+    );
+    expect(result.data.map((movement) => movement.type)).toEqual([
+      'REVERSAL',
+      'WRITE_OFF',
+    ]);
+    expect(result.summary).toEqual({
+      total: 2,
+      writeOffs: 1,
+      reversals: 1,
+      writtenOffQuantity: 3,
+      restoredQuantity: 3,
+      netQuantity: 0,
+    });
+    expect(result.meta).toEqual({
+      page: 1,
+      pageSize: 20,
+      total: 2,
+      totalPages: 1,
+    });
+  });
+
+  it('should export inventory movements to a spreadsheet', async () => {
+    prismaServiceMock.productLotWriteOff.findMany.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000701',
+        reason: ProductLotWriteOffReason.EXPIRED,
+        quantity: 2,
+        previousQuantity: 10,
+        remainingQuantity: 8,
+        notes: null,
+        createdAt: new Date('2026-09-10T13:00:00.000Z'),
+        performedBy: adminUser,
+        productLot: expiration,
+        reversal: null,
+      },
+    ]);
+
+    const report = await service.exportInventoryMovements(
+      {
+        page: 1,
+        pageSize: 20,
+        type: InventoryMovementTypeFilter.WRITE_OFF,
+      },
+      adminUser,
+    );
+    const workbook = XLSX.read(report.buffer, {
+      type: 'buffer',
+      cellDates: true,
+    });
+    const worksheet = workbook.Sheets['Movimentações'];
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      raw: true,
+    });
+    const formattedRows = XLSX.utils.sheet_to_json<string[]>(worksheet, {
+      header: 1,
+      raw: false,
+    });
+
+    expect(report.fileName).toMatch(
+      /^movimentacoes-estoque-\d{8}-\d{6}\.xlsx$/,
+    );
+    expect(rows[0]).toEqual([
+      'Data e hora',
+      'Movimentação',
+      'Código do produto',
+      'Código de barras',
+      'Produto',
+      'Loja',
+      'Lote',
+      'Validade',
+      'Quantidade',
+      'Saldo anterior',
+      'Saldo resultante',
+      'Motivo',
+      'Responsável',
+      'E-mail do responsável',
+      'Observações',
+    ]);
+    expect(rows[1]?.[1]).toBe('Baixa');
+    expect(rows[1]?.[8]).toBe(2);
+    expect(rows[1]?.[11]).toBe('Vencido');
+    expect(formattedRows[1]?.[0]).toBe('10/09/2026 10:00');
+    expect(formattedRows[1]?.[7]).toBe('31/12/2026');
   });
 
   it('should return a filtered expiration page and global summary', async () => {

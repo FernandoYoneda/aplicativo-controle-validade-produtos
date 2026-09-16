@@ -165,6 +165,41 @@ export interface ExpirationWriteOffRecord {
   };
 }
 
+export type InventoryMovementType = "WRITE_OFF" | "REVERSAL";
+export type InventoryMovementTypeFilter = "all" | "writeOff" | "reversal";
+
+export interface InventoryMovementRecord {
+  id: string;
+  writeOffId: string;
+  type: InventoryMovementType;
+  quantity: number;
+  previousQuantity: number;
+  resultingQuantity: number;
+  reason: string;
+  notes: string | null;
+  createdAt: string;
+  performedBy: ExpirationWriteOffRecord["performedBy"];
+  productLot: ExpirationWriteOffRecord["productLot"];
+}
+
+export interface InventoryMovementPage {
+  data: InventoryMovementRecord[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    total: number;
+    writeOffs: number;
+    reversals: number;
+    writtenOffQuantity: number;
+    restoredQuantity: number;
+    netQuantity: number;
+  };
+}
+
 export interface CreateWriteOffPayload {
   quantity: number;
   reason: ExpirationWriteOffReason;
