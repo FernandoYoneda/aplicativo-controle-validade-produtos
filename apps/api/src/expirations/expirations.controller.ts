@@ -22,6 +22,7 @@ import { CreateExpirationDto } from './dto/create-expiration.dto';
 import { CreateWriteOffDto } from './dto/create-write-off.dto';
 import { CreateWriteOffReversalDto } from './dto/create-write-off-reversal.dto';
 import { ListExpirationAlertsQueryDto } from './dto/list-expiration-alerts-query.dto';
+import { ListInventoryMovementsQueryDto } from './dto/list-inventory-movements-query.dto';
 import {
   FilterExpirationsQueryDto,
   ListExpirationsQueryDto,
@@ -48,6 +49,7 @@ import type {
   ExpirationWriteOffReversalResult,
   ExpirationWriteOffResult,
 } from './expiration-write-off.types';
+import type { InventoryMovementPage } from './inventory-movement.types';
 
 @Controller('expirations')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -94,6 +96,36 @@ export class ExpirationsController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
     const report = await this.expirationsService.exportSpreadsheet(
+      query,
+      request.user,
+    );
+    response.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${report.fileName}"`,
+      'Content-Length': String(report.buffer.length),
+    });
+
+    return new StreamableFile(report.buffer);
+  }
+
+  @Get('inventory-movements')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  findInventoryMovements(
+    @Query() query: ListInventoryMovementsQueryDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<InventoryMovementPage> {
+    return this.expirationsService.findInventoryMovements(query, request.user);
+  }
+
+  @Get('inventory-movements/export')
+  @Roles(UserRole.ADMIN, UserRole.STORE_USER)
+  async exportInventoryMovements(
+    @Query() query: ListInventoryMovementsQueryDto,
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const report = await this.expirationsService.exportInventoryMovements(
       query,
       request.user,
     );

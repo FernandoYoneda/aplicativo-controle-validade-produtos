@@ -20,6 +20,7 @@ type NavigationIconName =
   | "home"
   | "alerts"
   | "expirations"
+  | "movements"
   | "products"
   | "stores"
   | "users";
@@ -35,6 +36,7 @@ const navigationItems: NavigationItem[] = [
   { href: "/", icon: "home", label: "Painel" },
   { href: "/alerts", icon: "alerts", label: "Alertas" },
   { href: "/expirations", icon: "expirations", label: "Validades" },
+  { href: "/movements", icon: "movements", label: "Movimentações" },
   { href: "/products", icon: "products", label: "Produtos", adminOnly: true },
   { href: "/stores", icon: "stores", label: "Lojas", adminOnly: true },
   { href: "/users", icon: "users", label: "Usuários", adminOnly: true },
@@ -75,6 +77,14 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
       <svg {...commonProps}>
         <rect height="17" rx="2" width="18" x="3" y="4" />
         <path d="M8 2v4M16 2v4M3 9h18M12 13v4M10 15h4" />
+      </svg>
+    );
+  }
+
+  if (name === "movements") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 7h13M14 4l3 3-3 3M20 17H7M10 14l-3 3 3 3" />
       </svg>
     );
   }
