@@ -23,6 +23,13 @@ enum ProductLotWriteOffReason {
   @@map("product_lot_write_off_reason")
 }
 
+enum ProductLotStockAdjustmentType {
+  ENTRY
+  ADJUSTMENT
+
+  @@map("product_lot_stock_adjustment_type")
+}
+
 enum ExpirationEmailNotificationType {
   EXPIRATION_NEXT_30_DAYS
   EXPIRATION_EXPIRED
@@ -78,6 +85,7 @@ model User {
   store                           Store?                           @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   productLotWriteOffs             ProductLotWriteOff[]
   productLotWriteOffReversals     ProductLotWriteOffReversal[]
+  productLotStockAdjustments      ProductLotStockAdjustment[]
   expirationAlertAcknowledgements ExpirationAlertAcknowledgement[]
 
   @@index([storeId])
@@ -134,6 +142,7 @@ model ProductLot {
 
   storeProduct          StoreProduct                     @relation(fields: [storeProductId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   writeOffs             ProductLotWriteOff[]
+  stockAdjustments      ProductLotStockAdjustment[]
   emailDeliveries       ExpirationEmailDelivery[]
   alertAcknowledgements ExpirationAlertAcknowledgement[]
 
@@ -141,6 +150,27 @@ model ProductLot {
   @@index([expirationDate])
   @@index([isActive])
   @@map("product_lots")
+}
+
+model ProductLotStockAdjustment {
+  id                String                        @id @default(uuid()) @db.Uuid
+  productLotId      String                        @map("product_lot_id") @db.Uuid
+  performedByUserId String                        @map("performed_by_user_id") @db.Uuid
+  type              ProductLotStockAdjustmentType
+  quantityDelta     Int                           @map("quantity_delta")
+  previousQuantity  Int                           @map("previous_quantity")
+  resultingQuantity Int                           @map("resulting_quantity")
+  reason            String                        @db.VarChar(200)
+  notes             String?                       @db.VarChar(500)
+  createdAt         DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  productLot  ProductLot @relation(fields: [productLotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  performedBy User       @relation(fields: [performedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([productLotId, createdAt])
+  @@index([performedByUserId, createdAt])
+  @@index([type, createdAt])
+  @@map("product_lot_stock_adjustments")
 }
 
 model ProductLotWriteOff {

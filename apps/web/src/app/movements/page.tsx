@@ -28,6 +28,8 @@ interface MovementsPageProps {
 
 const movementTypes = new Set<InventoryMovementTypeFilter>([
   "all",
+  "entry",
+  "adjustment",
   "writeOff",
   "reversal",
 ]);
@@ -51,7 +53,7 @@ function isDateOnly(value: string): boolean {
 }
 
 function getReasonLabel(movement: InventoryMovementRecord): string {
-  if (movement.type === "REVERSAL") return movement.reason;
+  if (movement.type !== "WRITE_OFF") return movement.reason;
 
   return (
     {
@@ -62,20 +64,38 @@ function getReasonLabel(movement: InventoryMovementRecord): string {
   );
 }
 
+function getMovementDelta(movement: InventoryMovementRecord): number {
+  return movement.resultingQuantity - movement.previousQuantity;
+}
+
+function getMovementQuantityLabel(movement: InventoryMovementRecord): string {
+  const delta = getMovementDelta(movement);
+  return `${delta >= 0 ? "+" : "−"}${numberFormatter.format(Math.abs(delta))}`;
+}
+
+function getMovementQuantityColor(movement: InventoryMovementRecord): string {
+  return getMovementDelta(movement) < 0
+    ? "text-amber-700"
+    : "text-emerald-700";
+}
+
 function getPageHref(query: InventoryMovementQuery, page: number): string {
   return `/movements${createInventoryMovementQueryString({ ...query, page })}`;
 }
 
 function MovementBadge({ type }: Pick<InventoryMovementRecord, "type">) {
+  const settings = {
+    ENTRY: { label: "Entrada", className: "bg-sky-50 text-sky-800" },
+    ADJUSTMENT: { label: "Ajuste", className: "bg-violet-50 text-violet-800" },
+    WRITE_OFF: { label: "Baixa", className: "bg-amber-50 text-amber-800" },
+    REVERSAL: { label: "Estorno", className: "bg-emerald-50 text-emerald-800" },
+  }[type];
+
   return (
     <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
-        type === "WRITE_OFF"
-          ? "bg-amber-50 text-amber-800"
-          : "bg-emerald-50 text-emerald-800"
-      }`}
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${settings.className}`}
     >
-      {type === "WRITE_OFF" ? "Baixa" : "Estorno"}
+      {settings.label}
     </span>
   );
 }
@@ -150,7 +170,7 @@ export default async function MovementsPage({
               Movimentações de estoque
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
-              Consulte baixas e estornos, acompanhe os saldos e exporte o histórico operacional.
+              Consulte entradas, ajustes, baixas e estornos, acompanhe os saldos e exporte o histórico operacional.
             </p>
           </div>
         </section>
@@ -168,9 +188,9 @@ export default async function MovementsPage({
             <section className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
               {[
                 ["Movimentações", movementPage!.summary.total, "text-[var(--casabella-teal-dark)]"],
-                ["Unidades baixadas", movementPage!.summary.writtenOffQuantity, "text-amber-700"],
-                ["Unidades restauradas", movementPage!.summary.restoredQuantity, "text-emerald-700"],
-                ["Saldo líquido baixado", movementPage!.summary.netQuantity, "text-[var(--casabella-coral-dark)]"],
+                ["Unidades de entrada", movementPage!.summary.inboundQuantity, "text-emerald-700"],
+                ["Unidades de saída", movementPage!.summary.outboundQuantity, "text-amber-700"],
+                ["Variação líquida", movementPage!.summary.netQuantity, "text-[var(--casabella-coral-dark)]"],
               ].map(([label, value, color]) => (
                 <article className="rounded-2xl border border-[var(--casabella-border)] bg-white p-5 shadow-sm" key={String(label)}>
                   <p className="text-sm text-[var(--casabella-muted)]">{label}</p>
@@ -204,6 +224,8 @@ export default async function MovementsPage({
                   <span className="text-sm font-bold text-[var(--casabella-graphite)]">Tipo</span>
                   <select className="mt-2 h-11 w-full rounded-xl border border-[var(--casabella-border)] bg-white px-3" defaultValue={query.type} name="type">
                     <option value="all">Todas</option>
+                    <option value="entry">Entradas</option>
+                    <option value="adjustment">Ajustes</option>
                     <option value="writeOff">Baixas</option>
                     <option value="reversal">Estornos</option>
                   </select>
@@ -258,7 +280,7 @@ export default async function MovementsPage({
                               <td className="px-4 py-5"><MovementBadge type={movement.type} /></td>
                               <td className="max-w-xs px-4 py-5"><p className="font-bold text-[var(--casabella-graphite)]">{product.code} — {product.name}</p><p className="mt-1 text-xs text-[var(--casabella-muted)]">{getReasonLabel(movement)}{movement.notes ? ` · ${movement.notes}` : ""}</p></td>
                               <td className="px-4 py-5"><p className="font-semibold">{store.code} — {store.name}</p><p className="mt-1 text-xs text-[var(--casabella-muted)]">{movement.productLot.batchNumber ?? "Sem lote"} · validade {dateFormatter.format(new Date(movement.productLot.expirationDate))}</p></td>
-                              <td className={`px-4 py-5 font-bold ${movement.type === "WRITE_OFF" ? "text-amber-700" : "text-emerald-700"}`}>{movement.type === "WRITE_OFF" ? "−" : "+"}{numberFormatter.format(movement.quantity)}</td>
+                              <td className={`px-4 py-5 font-bold ${getMovementQuantityColor(movement)}`}>{getMovementQuantityLabel(movement)}</td>
                               <td className="whitespace-nowrap px-4 py-5">{movement.previousQuantity} → {movement.resultingQuantity}</td>
                               <td className="px-4 py-5"><p className="font-semibold">{movement.performedBy.name}</p><p className="mt-1 text-xs text-[var(--casabella-muted)]">{movement.performedBy.email}</p></td>
                             </tr>
@@ -277,7 +299,7 @@ export default async function MovementsPage({
                           <div className="flex items-start justify-between gap-3"><MovementBadge type={movement.type} /><time className="text-xs text-[var(--casabella-muted)]">{dateTimeFormatter.format(new Date(movement.createdAt))}</time></div>
                           <h3 className="mt-4 font-bold text-[var(--casabella-graphite)]">{product.code} — {product.name}</h3>
                           <p className="mt-1 text-sm text-[var(--casabella-muted)]">{store.code} — {store.name} · {movement.productLot.batchNumber ?? "Sem lote"}</p>
-                          <div className="mt-4 grid grid-cols-2 gap-3"><div><p className="text-xs font-bold tracking-wide text-[var(--casabella-muted)] uppercase">Quantidade</p><p className="mt-1 font-bold">{movement.type === "WRITE_OFF" ? "−" : "+"}{movement.quantity}</p></div><div><p className="text-xs font-bold tracking-wide text-[var(--casabella-muted)] uppercase">Saldo</p><p className="mt-1 font-bold">{movement.previousQuantity} → {movement.resultingQuantity}</p></div></div>
+                          <div className="mt-4 grid grid-cols-2 gap-3"><div><p className="text-xs font-bold tracking-wide text-[var(--casabella-muted)] uppercase">Quantidade</p><p className={`mt-1 font-bold ${getMovementQuantityColor(movement)}`}>{getMovementQuantityLabel(movement)}</p></div><div><p className="text-xs font-bold tracking-wide text-[var(--casabella-muted)] uppercase">Saldo</p><p className="mt-1 font-bold">{movement.previousQuantity} → {movement.resultingQuantity}</p></div></div>
                           <p className="mt-4 text-sm"><span className="font-bold">Motivo:</span> {getReasonLabel(movement)}</p>
                           {movement.notes ? <p className="mt-1 text-sm text-[var(--casabella-muted)]">{movement.notes}</p> : null}
                           <p className="mt-4 border-t border-[var(--casabella-border)] pt-3 text-xs text-[var(--casabella-muted)]">Realizado por <strong>{movement.performedBy.name}</strong></p>

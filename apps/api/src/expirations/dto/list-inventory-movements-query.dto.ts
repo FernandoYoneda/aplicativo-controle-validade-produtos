@@ -13,6 +13,8 @@ import {
 
 export enum InventoryMovementTypeFilter {
   ALL = 'all',
+  ENTRY = 'entry',
+  ADJUSTMENT = 'adjustment',
   WRITE_OFF = 'writeOff',
   REVERSAL = 'reversal',
 }
