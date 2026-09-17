@@ -56,6 +56,8 @@ function isUpdateExpirationPayload(
   const hasBatchNumber = payload.batchNumber !== undefined;
   const hasExpirationDate = payload.expirationDate !== undefined;
   const hasQuantity = payload.quantity !== undefined;
+  const hasAdjustmentReason = payload.adjustmentReason !== undefined;
+  const hasAdjustmentNotes = payload.adjustmentNotes !== undefined;
   const hasNotes = payload.notes !== undefined;
   const hasIsActive = payload.isActive !== undefined;
 
@@ -63,6 +65,8 @@ function isUpdateExpirationPayload(
     !hasBatchNumber &&
     !hasExpirationDate &&
     !hasQuantity &&
+    !hasAdjustmentReason &&
+    !hasAdjustmentNotes &&
     !hasNotes &&
     !hasIsActive
   ) {
@@ -73,6 +77,9 @@ function isUpdateExpirationPayload(
     (!hasBatchNumber || isOptionalNullableString(payload.batchNumber)) &&
     (!hasExpirationDate || typeof payload.expirationDate === "string") &&
     (!hasQuantity || typeof payload.quantity === "number") &&
+    (!hasAdjustmentReason || typeof payload.adjustmentReason === "string") &&
+    (!hasAdjustmentNotes ||
+      isOptionalNullableString(payload.adjustmentNotes)) &&
     (!hasNotes || isOptionalNullableString(payload.notes)) &&
     (!hasIsActive || typeof payload.isActive === "boolean")
   );
@@ -136,6 +143,8 @@ export async function PATCH(
           batchNumber: payload.batchNumber,
           expirationDate: payload.expirationDate,
           quantity: payload.quantity,
+          adjustmentReason: payload.adjustmentReason,
+          adjustmentNotes: payload.adjustmentNotes,
           notes: payload.notes,
           isActive: payload.isActive,
         }),

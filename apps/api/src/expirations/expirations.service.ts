@@ -10,6 +10,7 @@ import * as XLSX from '@e965/xlsx';
 import type { Prisma } from '../../generated/prisma/client';
 import {
   ExpirationAlertType,
+  ProductLotStockAdjustmentType,
   ProductLotWriteOffReason,
   UserRole,
 } from '../../generated/prisma/enums';
@@ -55,10 +56,11 @@ import {
   expirationWriteOffSelect,
   expirationWriteOffReversalSelect,
 } from './expiration-write-off.types';
-import type {
-  InventoryMovementPage,
-  InventoryMovementRecord,
-  InventoryMovementSummary,
+import {
+  productLotStockAdjustmentSelect,
+  type InventoryMovementPage,
+  type InventoryMovementRecord,
+  type InventoryMovementSummary,
 } from './inventory-movement.types';
 
 interface ExpirationDateLimits {
@@ -529,14 +531,14 @@ export class ExpirationsService {
 
         return [
           this.getSaoPauloDateTimeLabel(movement.createdAt),
-          movement.type === 'WRITE_OFF' ? 'Baixa' : 'Estorno',
+          this.getInventoryMovementTypeLabel(movement),
           product.code,
           product.barcode ?? '',
           product.name,
           `${store.code} — ${store.name}`,
           movement.productLot.batchNumber ?? '',
           this.getDateOnlyLabel(movement.productLot.expirationDate),
-          movement.quantity,
+          movement.resultingQuantity - movement.previousQuantity,
           movement.previousQuantity,
           movement.resultingQuantity,
           this.getInventoryMovementReasonLabel(movement),
@@ -917,7 +919,7 @@ export class ExpirationsService {
         },
       });
 
-      return transaction.productLot.create({
+      const productLot = await transaction.productLot.create({
         data: {
           storeProductId: storeProduct.id,
           batchNumber: createExpirationDto.batchNumber ?? null,
@@ -929,6 +931,21 @@ export class ExpirationsService {
         },
         select: expirationSelect,
       });
+
+      await transaction.productLotStockAdjustment.create({
+        data: {
+          productLotId: productLot.id,
+          performedByUserId: user.id,
+          type: ProductLotStockAdjustmentType.ENTRY,
+          quantityDelta: productLot.quantity,
+          previousQuantity: 0,
+          resultingQuantity: productLot.quantity,
+          reason: 'Cadastro inicial do lote',
+        },
+        select: { id: true },
+      });
+
+      return productLot;
     });
   }
 
@@ -963,22 +980,64 @@ export class ExpirationsService {
 
     this.ensureStoreAccess(user, expiration.storeProduct.store.id);
 
-    return this.prisma.productLot.update({
-      where: {
-        id,
-      },
-      data: {
-        batchNumber: updateExpirationDto.batchNumber,
-        expirationDate:
-          updateExpirationDto.expirationDate !== undefined
-            ? this.parseDateOnly(updateExpirationDto.expirationDate)
-            : undefined,
-        quantity: updateExpirationDto.quantity,
-        notes: updateExpirationDto.notes,
-        isActive: updateExpirationDto.isActive,
-      },
-      select: expirationSelect,
-    });
+    const quantityChanged =
+      updateExpirationDto.quantity !== undefined &&
+      updateExpirationDto.quantity !== expiration.quantity;
+    const adjustmentReason = updateExpirationDto.adjustmentReason;
+
+    if (quantityChanged && !adjustmentReason) {
+      throw new BadRequestException(
+        'Informe o motivo do ajuste para alterar a quantidade.',
+      );
+    }
+    const validatedAdjustmentReason = adjustmentReason ?? '';
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const updatedExpiration = await transaction.productLot.update({
+          where: quantityChanged
+            ? { id, quantity: expiration.quantity }
+            : { id },
+          data: {
+            batchNumber: updateExpirationDto.batchNumber,
+            expirationDate:
+              updateExpirationDto.expirationDate !== undefined
+                ? this.parseDateOnly(updateExpirationDto.expirationDate)
+                : undefined,
+            quantity: updateExpirationDto.quantity,
+            notes: updateExpirationDto.notes,
+            isActive: updateExpirationDto.isActive,
+          },
+          select: expirationSelect,
+        });
+
+        if (quantityChanged) {
+          await transaction.productLotStockAdjustment.create({
+            data: {
+              productLotId: id,
+              performedByUserId: user.id,
+              type: ProductLotStockAdjustmentType.ADJUSTMENT,
+              quantityDelta: updatedExpiration.quantity - expiration.quantity,
+              previousQuantity: expiration.quantity,
+              resultingQuantity: updatedExpiration.quantity,
+              reason: validatedAdjustmentReason,
+              notes: updateExpirationDto.adjustmentNotes ?? null,
+            },
+            select: { id: true },
+          });
+        }
+
+        return updatedExpiration;
+      });
+    } catch (error: unknown) {
+      if (this.hasPrismaErrorCode(error, 'P2025')) {
+        throw new ConflictException(
+          'O saldo deste lote foi alterado por outra operação. Atualize a lista e tente novamente.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   private resolveStoreId(
@@ -1032,7 +1091,17 @@ export class ExpirationsService {
       ...(toExclusive ? { lt: toExclusive } : {}),
     };
     const hasDateFilter = Boolean(from || toExclusive);
-    const movementWhere: Prisma.ProductLotWriteOffWhereInput =
+    const includeWriteOffs = [
+      InventoryMovementTypeFilter.ALL,
+      InventoryMovementTypeFilter.WRITE_OFF,
+      InventoryMovementTypeFilter.REVERSAL,
+    ].includes(query.type);
+    const includeStockAdjustments = [
+      InventoryMovementTypeFilter.ALL,
+      InventoryMovementTypeFilter.ENTRY,
+      InventoryMovementTypeFilter.ADJUSTMENT,
+    ].includes(query.type);
+    const writeOffWhere: Prisma.ProductLotWriteOffWhereInput =
       query.type === InventoryMovementTypeFilter.WRITE_OFF
         ? { createdAt: dateWhere }
         : query.type === InventoryMovementTypeFilter.REVERSAL
@@ -1045,11 +1114,35 @@ export class ExpirationsService {
                 ],
               }
             : {};
-    const writeOffs = await this.prisma.productLotWriteOff.findMany({
-      where: { AND: [{ productLot: accessWhere }, movementWhere] },
-      select: expirationWriteOffSelect,
-      orderBy: { createdAt: 'desc' },
-    });
+    const adjustmentType =
+      query.type === InventoryMovementTypeFilter.ENTRY
+        ? ProductLotStockAdjustmentType.ENTRY
+        : query.type === InventoryMovementTypeFilter.ADJUSTMENT
+          ? ProductLotStockAdjustmentType.ADJUSTMENT
+          : undefined;
+    const stockAdjustmentWhere: Prisma.ProductLotStockAdjustmentWhereInput = {
+      AND: [
+        { productLot: accessWhere },
+        ...(hasDateFilter ? [{ createdAt: dateWhere }] : []),
+        ...(adjustmentType ? [{ type: adjustmentType }] : []),
+      ],
+    };
+    const [writeOffs, stockAdjustments] = await Promise.all([
+      includeWriteOffs
+        ? this.prisma.productLotWriteOff.findMany({
+            where: { AND: [{ productLot: accessWhere }, writeOffWhere] },
+            select: expirationWriteOffSelect,
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
+      includeStockAdjustments
+        ? this.prisma.productLotStockAdjustment.findMany({
+            where: stockAdjustmentWhere,
+            select: productLotStockAdjustmentSelect,
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
+    ]);
     const movements = writeOffs.flatMap<InventoryMovementRecord>((writeOff) => {
       const records: InventoryMovementRecord[] = [];
 
@@ -1057,6 +1150,7 @@ export class ExpirationsService {
         records.push({
           id: writeOff.id,
           writeOffId: writeOff.id,
+          stockAdjustmentId: null,
           type: 'WRITE_OFF',
           quantity: writeOff.quantity,
           previousQuantity: writeOff.previousQuantity,
@@ -1076,6 +1170,7 @@ export class ExpirationsService {
         records.push({
           id: writeOff.reversal.id,
           writeOffId: writeOff.id,
+          stockAdjustmentId: null,
           type: 'REVERSAL',
           quantity: writeOff.reversal.restoredQuantity,
           previousQuantity: writeOff.reversal.previousQuantity,
@@ -1090,6 +1185,25 @@ export class ExpirationsService {
 
       return records;
     });
+    movements.push(
+      ...stockAdjustments.map<InventoryMovementRecord>((adjustment) => ({
+        id: adjustment.id,
+        writeOffId: null,
+        stockAdjustmentId: adjustment.id,
+        type:
+          adjustment.type === ProductLotStockAdjustmentType.ENTRY
+            ? 'ENTRY'
+            : 'ADJUSTMENT',
+        quantity: Math.abs(adjustment.quantityDelta),
+        previousQuantity: adjustment.previousQuantity,
+        resultingQuantity: adjustment.resultingQuantity,
+        reason: adjustment.reason,
+        notes: adjustment.notes,
+        createdAt: adjustment.createdAt,
+        performedBy: adjustment.performedBy,
+        productLot: adjustment.productLot,
+      })),
+    );
     const search = query.search?.trim().toLocaleLowerCase('pt-BR');
 
     return movements
@@ -1101,7 +1215,7 @@ export class ExpirationsService {
         const product = movement.productLot.storeProduct.product;
         const store = movement.productLot.storeProduct.store;
         return [
-          movement.type === 'WRITE_OFF' ? 'baixa' : 'estorno',
+          this.getInventoryMovementTypeLabel(movement),
           movement.reason,
           this.getInventoryMovementReasonLabel(movement),
           movement.notes,
@@ -1125,35 +1239,54 @@ export class ExpirationsService {
   private getInventoryMovementSummary(
     movements: InventoryMovementRecord[],
   ): InventoryMovementSummary {
+    const entries = movements.filter((movement) => movement.type === 'ENTRY');
+    const adjustments = movements.filter(
+      (movement) => movement.type === 'ADJUSTMENT',
+    );
     const writeOffs = movements.filter(
       (movement) => movement.type === 'WRITE_OFF',
     );
     const reversals = movements.filter(
       (movement) => movement.type === 'REVERSAL',
     );
-    const writtenOffQuantity = writeOffs.reduce(
-      (total, movement) => total + movement.quantity,
-      0,
-    );
-    const restoredQuantity = reversals.reduce(
-      (total, movement) => total + movement.quantity,
-      0,
-    );
+    const inboundQuantity = movements.reduce((total, movement) => {
+      const difference = movement.resultingQuantity - movement.previousQuantity;
+      return difference > 0 ? total + difference : total;
+    }, 0);
+    const outboundQuantity = movements.reduce((total, movement) => {
+      const difference = movement.resultingQuantity - movement.previousQuantity;
+      return difference < 0 ? total + Math.abs(difference) : total;
+    }, 0);
 
     return {
       total: movements.length,
+      entries: entries.length,
+      adjustments: adjustments.length,
       writeOffs: writeOffs.length,
       reversals: reversals.length,
-      writtenOffQuantity,
-      restoredQuantity,
-      netQuantity: writtenOffQuantity - restoredQuantity,
+      inboundQuantity,
+      outboundQuantity,
+      netQuantity: inboundQuantity - outboundQuantity,
     };
+  }
+
+  private getInventoryMovementTypeLabel(
+    movement: InventoryMovementRecord,
+  ): string {
+    const labels: Record<InventoryMovementRecord['type'], string> = {
+      ENTRY: 'Entrada',
+      ADJUSTMENT: 'Ajuste',
+      WRITE_OFF: 'Baixa',
+      REVERSAL: 'Estorno',
+    };
+
+    return labels[movement.type];
   }
 
   private getInventoryMovementReasonLabel(
     movement: InventoryMovementRecord,
   ): string {
-    if (movement.type === 'REVERSAL') return movement.reason;
+    if (movement.type !== 'WRITE_OFF') return movement.reason;
 
     const labels: Record<ProductLotWriteOffReason, string> = {
       [ProductLotWriteOffReason.SOLD]: 'Vendido',

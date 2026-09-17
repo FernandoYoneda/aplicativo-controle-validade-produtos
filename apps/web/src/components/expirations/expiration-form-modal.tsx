@@ -85,6 +85,8 @@ export function ExpirationFormModal({
     getDateInputValue(expiration?.expirationDate),
   );
   const [quantity, setQuantity] = useState(String(expiration?.quantity ?? 1));
+  const [adjustmentReason, setAdjustmentReason] = useState("");
+  const [adjustmentNotes, setAdjustmentNotes] = useState("");
   const [notes, setNotes] = useState(expiration?.notes ?? "");
   const [isActive, setIsActive] = useState(expiration?.isActive ?? true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -166,6 +168,8 @@ export function ExpirationFormModal({
     const normalizedBatchNumber = batchNumber.trim();
     const normalizedExpirationDate = expirationDate.trim();
     const normalizedQuantity = Number(quantity);
+    const normalizedAdjustmentReason = adjustmentReason.trim();
+    const normalizedAdjustmentNotes = adjustmentNotes.trim();
     const normalizedNotes = notes.trim();
 
     if (!isEditing && !productId) {
@@ -195,6 +199,28 @@ export function ExpirationFormModal({
       return;
     }
 
+    const quantityChanged =
+      isEditing && normalizedQuantity !== expiration.quantity;
+
+    if (quantityChanged && normalizedAdjustmentReason.length < 3) {
+      setErrorMessage(
+        "Informe um motivo com pelo menos 3 caracteres para ajustar a quantidade.",
+      );
+      return;
+    }
+
+    if (normalizedAdjustmentReason.length > 200) {
+      setErrorMessage("O motivo do ajuste deve possuir no máximo 200 caracteres.");
+      return;
+    }
+
+    if (normalizedAdjustmentNotes.length > 500) {
+      setErrorMessage(
+        "As observações do ajuste devem possuir no máximo 500 caracteres.",
+      );
+      return;
+    }
+
     if (normalizedBatchNumber.length > 80) {
       setErrorMessage("O lote deve possuir no máximo 80 caracteres.");
       return;
@@ -210,6 +236,12 @@ export function ExpirationFormModal({
           batchNumber: normalizedBatchNumber || null,
           expirationDate: normalizedExpirationDate,
           quantity: normalizedQuantity,
+          adjustmentReason: quantityChanged
+            ? normalizedAdjustmentReason
+            : undefined,
+          adjustmentNotes: quantityChanged
+            ? normalizedAdjustmentNotes || null
+            : undefined,
           notes: normalizedNotes || null,
           isActive,
         }
@@ -538,6 +570,62 @@ export function ExpirationFormModal({
               value={quantity}
             />
           </div>
+
+          {isEditing && Number(quantity) !== expiration.quantity ? (
+            <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div>
+                <p className="text-sm font-bold text-amber-900">
+                  Ajuste auditável de estoque
+                </p>
+                <p className="mt-1 text-xs leading-5 text-amber-800">
+                  O saldo será alterado de {expiration.quantity} para {quantity || "0"} unidades. O responsável e o horário serão registrados automaticamente.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
+                  htmlFor="expiration-adjustment-reason"
+                >
+                  Motivo do ajuste
+                </label>
+                <input
+                  autoComplete="off"
+                  className="h-12 w-full rounded-xl border border-amber-300 bg-white px-4 text-sm text-[var(--casabella-graphite)] outline-none transition focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:bg-zinc-50"
+                  disabled={isSaving}
+                  id="expiration-adjustment-reason"
+                  maxLength={200}
+                  minLength={3}
+                  onChange={(event) => setAdjustmentReason(event.target.value)}
+                  placeholder="Exemplo: correção após contagem física"
+                  required
+                  type="text"
+                  value={adjustmentReason}
+                />
+              </div>
+
+              <div>
+                <label
+                  className="mb-2 block text-sm font-semibold text-[var(--casabella-graphite)]"
+                  htmlFor="expiration-adjustment-notes"
+                >
+                  Observações do ajuste
+                  <span className="ml-1 font-normal text-[var(--casabella-muted)]">
+                    (opcional)
+                  </span>
+                </label>
+                <textarea
+                  className="min-h-20 w-full resize-y rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm leading-6 text-[var(--casabella-graphite)] outline-none transition focus:border-[var(--casabella-teal)] focus:ring-3 focus:ring-[var(--casabella-teal-soft)] disabled:cursor-not-allowed disabled:bg-zinc-50"
+                  disabled={isSaving}
+                  id="expiration-adjustment-notes"
+                  maxLength={500}
+                  onChange={(event) => setAdjustmentNotes(event.target.value)}
+                  placeholder="Detalhes adicionais da conferência"
+                  value={adjustmentNotes}
+                />
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <label

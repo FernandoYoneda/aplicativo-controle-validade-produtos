@@ -50,6 +50,28 @@ export class UpdateExpirationDto {
   quantity?: number;
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }): unknown =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(3, 200)
+  adjustmentReason?: string;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }): unknown => {
+    if (typeof value !== 'string') {
+      return value;
+    }
+
+    const normalizedValue = value.trim();
+
+    return normalizedValue.length > 0 ? normalizedValue : null;
+  })
+  @IsString()
+  @Length(1, 500)
+  adjustmentNotes?: string | null;
+
+  @IsOptional()
   @Transform(({ value }: { value: unknown }): unknown => {
     if (typeof value !== 'string') {
       return value;

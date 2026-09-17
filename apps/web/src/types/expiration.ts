@@ -120,6 +120,8 @@ export interface UpdateExpirationPayload {
   batchNumber?: string | null;
   expirationDate?: string;
   quantity?: number;
+  adjustmentReason?: string;
+  adjustmentNotes?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -165,12 +167,22 @@ export interface ExpirationWriteOffRecord {
   };
 }
 
-export type InventoryMovementType = "WRITE_OFF" | "REVERSAL";
-export type InventoryMovementTypeFilter = "all" | "writeOff" | "reversal";
+export type InventoryMovementType =
+  | "ENTRY"
+  | "ADJUSTMENT"
+  | "WRITE_OFF"
+  | "REVERSAL";
+export type InventoryMovementTypeFilter =
+  | "all"
+  | "entry"
+  | "adjustment"
+  | "writeOff"
+  | "reversal";
 
 export interface InventoryMovementRecord {
   id: string;
-  writeOffId: string;
+  writeOffId: string | null;
+  stockAdjustmentId: string | null;
   type: InventoryMovementType;
   quantity: number;
   previousQuantity: number;
@@ -192,10 +204,12 @@ export interface InventoryMovementPage {
   };
   summary: {
     total: number;
+    entries: number;
+    adjustments: number;
     writeOffs: number;
     reversals: number;
-    writtenOffQuantity: number;
-    restoredQuantity: number;
+    inboundQuantity: number;
+    outboundQuantity: number;
     netQuantity: number;
   };
 }

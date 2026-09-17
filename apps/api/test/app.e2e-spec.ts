@@ -200,6 +200,15 @@ describe('API (e2e)', () => {
           },
         },
       });
+      await prisma.productLotStockAdjustment.deleteMany({
+        where: {
+          productLot: {
+            storeProduct: {
+              product: { code: { in: [productCode, updatedProductCode] } },
+            },
+          },
+        },
+      });
       await prisma.productLot.deleteMany({
         where: {
           storeProduct: {
@@ -808,6 +817,11 @@ describe('API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .send({ quantity: 1 })
       .expect(404);
+    await request(app.getHttpServer())
+      .patch(`/expirations/${expirationA.id}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ quantity: 9 })
+      .expect(400);
 
     const expirationUpdateResponse = await request(app.getHttpServer())
       .patch(`/expirations/${expirationA.id}`)
@@ -816,6 +830,8 @@ describe('API (e2e)', () => {
         batchNumber: '   ',
         expirationDate: '2033-03-15',
         quantity: '9',
+        adjustmentReason: '  Correção após inventário físico  ',
+        adjustmentNotes: '  Contagem E2E conferida  ',
         notes: '   ',
         isActive: false,
       })
@@ -831,6 +847,35 @@ describe('API (e2e)', () => {
       }),
     );
     expect(updatedExpiration.storeProduct.store.id).toBe(storeA.id);
+
+    const adjustmentsResponse = await request(app.getHttpServer())
+      .get('/expirations/inventory-movements')
+      .query({ type: 'adjustment' })
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    expect(adjustmentsResponse.body).toEqual(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            type: 'ADJUSTMENT',
+            quantity: 4,
+            previousQuantity: 5,
+            resultingQuantity: 9,
+            reason: 'Correção após inventário físico',
+            notes: 'Contagem E2E conferida',
+          }),
+        ],
+        // O matcher do Jest é tipado como any; a asserção valida somente o payload observado.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        summary: expect.objectContaining({
+          total: 1,
+          adjustments: 1,
+          inboundQuantity: 4,
+          outboundQuantity: 0,
+          netQuantity: 4,
+        }),
+      }),
+    );
 
     const adminListResponse = await request(app.getHttpServer())
       .get('/expirations')
