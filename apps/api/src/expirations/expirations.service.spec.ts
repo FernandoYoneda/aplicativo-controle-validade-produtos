@@ -19,6 +19,7 @@ import {
   ExpirationAlertStatusFilter,
 } from './dto/list-expiration-alerts-query.dto';
 import { ExpirationStatusFilter } from './dto/list-expirations-query.dto';
+import { InventoryMovementTypeFilter } from './dto/list-inventory-movements-query.dto';
 import {
   type ExpirationRecord,
   ExpirationsService,
@@ -49,6 +50,9 @@ describe('ExpirationsService', () => {
     productLotWriteOffReversal: {
       create: jest.fn(),
     },
+    productLotStockAdjustment: {
+      create: jest.fn(),
+    },
     expirationAlertAcknowledgement: {
       deleteMany: jest.fn(),
     },
@@ -74,6 +78,9 @@ describe('ExpirationsService', () => {
     },
     productLotWriteOff: {
       findMany: jest.fn(),
+    },
+    productLotStockAdjustment: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
     expirationAlertAcknowledgement: {
       upsert: jest.fn(),
@@ -580,6 +587,192 @@ describe('ExpirationsService', () => {
     expect(transactionMock.productLot.update).not.toHaveBeenCalled();
   });
 
+  it('should consolidate, filter and paginate inventory movements', async () => {
+    prismaServiceMock.productLotWriteOff.findMany.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000701',
+        reason: ProductLotWriteOffReason.SOLD,
+        quantity: 3,
+        previousQuantity: 10,
+        remainingQuantity: 7,
+        notes: 'Venda no caixa',
+        createdAt: new Date('2026-09-10T13:00:00.000Z'),
+        performedBy: adminUser,
+        productLot: expiration,
+        reversal: {
+          id: '00000000-0000-4000-8000-000000000801',
+          restoredQuantity: 3,
+          previousQuantity: 7,
+          resultingQuantity: 10,
+          reason: 'Venda registrada em duplicidade',
+          notes: 'Conferido no caixa',
+          createdAt: new Date('2026-09-11T14:00:00.000Z'),
+          reversedBy: storeUser,
+        },
+      },
+    ]);
+
+    const result = await service.findInventoryMovements(
+      {
+        page: 1,
+        pageSize: 20,
+        type: InventoryMovementTypeFilter.ALL,
+        search: 'caixa',
+      },
+      storeUser,
+    );
+
+    expect(prismaServiceMock.productLotWriteOff.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [{ productLot: { storeProduct: { storeId } } }, {}],
+        },
+      }),
+    );
+    expect(result.data.map((movement) => movement.type)).toEqual([
+      'REVERSAL',
+      'WRITE_OFF',
+    ]);
+    expect(result.summary).toEqual({
+      total: 2,
+      entries: 0,
+      adjustments: 0,
+      writeOffs: 1,
+      reversals: 1,
+      inboundQuantity: 3,
+      outboundQuantity: 3,
+      netQuantity: 0,
+    });
+    expect(result.meta).toEqual({
+      page: 1,
+      pageSize: 20,
+      total: 2,
+      totalPages: 1,
+    });
+  });
+
+  it('should include auditable stock adjustments in the movement report', async () => {
+    prismaServiceMock.productLotStockAdjustment.findMany.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000901',
+        type: 'ADJUSTMENT',
+        quantityDelta: 5,
+        previousQuantity: 10,
+        resultingQuantity: 15,
+        reason: 'Correção após inventário físico',
+        notes: 'Contagem conferida',
+        createdAt: new Date('2026-09-12T13:00:00.000Z'),
+        performedBy: adminUser,
+        productLot: expiration,
+      },
+    ]);
+
+    const result = await service.findInventoryMovements(
+      {
+        page: 1,
+        pageSize: 20,
+        type: InventoryMovementTypeFilter.ADJUSTMENT,
+      },
+      adminUser,
+    );
+
+    expect(
+      prismaServiceMock.productLotWriteOff.findMany,
+    ).not.toHaveBeenCalled();
+    expect(
+      prismaServiceMock.productLotStockAdjustment.findMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [{ productLot: {} }, { type: 'ADJUSTMENT' }],
+        },
+      }),
+    );
+    expect(result.data[0]).toEqual(
+      expect.objectContaining({
+        type: 'ADJUSTMENT',
+        quantity: 5,
+        previousQuantity: 10,
+        resultingQuantity: 15,
+      }),
+    );
+    expect(result.summary).toEqual({
+      total: 1,
+      entries: 0,
+      adjustments: 1,
+      writeOffs: 0,
+      reversals: 0,
+      inboundQuantity: 5,
+      outboundQuantity: 0,
+      netQuantity: 5,
+    });
+  });
+
+  it('should export inventory movements to a spreadsheet', async () => {
+    prismaServiceMock.productLotWriteOff.findMany.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000701',
+        reason: ProductLotWriteOffReason.EXPIRED,
+        quantity: 2,
+        previousQuantity: 10,
+        remainingQuantity: 8,
+        notes: null,
+        createdAt: new Date('2026-09-10T13:00:00.000Z'),
+        performedBy: adminUser,
+        productLot: expiration,
+        reversal: null,
+      },
+    ]);
+
+    const report = await service.exportInventoryMovements(
+      {
+        page: 1,
+        pageSize: 20,
+        type: InventoryMovementTypeFilter.WRITE_OFF,
+      },
+      adminUser,
+    );
+    const workbook = XLSX.read(report.buffer, {
+      type: 'buffer',
+      cellDates: true,
+    });
+    const worksheet = workbook.Sheets['Movimentações'];
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      raw: true,
+    });
+    const formattedRows = XLSX.utils.sheet_to_json<string[]>(worksheet, {
+      header: 1,
+      raw: false,
+    });
+
+    expect(report.fileName).toMatch(
+      /^movimentacoes-estoque-\d{8}-\d{6}\.xlsx$/,
+    );
+    expect(rows[0]).toEqual([
+      'Data e hora',
+      'Movimentação',
+      'Código do produto',
+      'Código de barras',
+      'Produto',
+      'Loja',
+      'Lote',
+      'Validade',
+      'Quantidade',
+      'Saldo anterior',
+      'Saldo resultante',
+      'Motivo',
+      'Responsável',
+      'E-mail do responsável',
+      'Observações',
+    ]);
+    expect(rows[1]?.[1]).toBe('Baixa');
+    expect(rows[1]?.[8]).toBe(-2);
+    expect(rows[1]?.[11]).toBe('Vencido');
+    expect(formattedRows[1]?.[0]).toBe('10/09/2026 10:00');
+    expect(formattedRows[1]?.[7]).toBe('31/12/2026');
+  });
+
   it('should return a filtered expiration page and global summary', async () => {
     prismaServiceMock.productLot.count
       .mockResolvedValueOnce(2)
@@ -999,6 +1192,20 @@ describe('ExpirationsService', () => {
         },
       }),
     );
+    expect(
+      transactionMock.productLotStockAdjustment.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        productLotId: expiration.id,
+        performedByUserId: adminUser.id,
+        type: 'ENTRY',
+        quantityDelta: expiration.quantity,
+        previousQuantity: 0,
+        resultingQuantity: expiration.quantity,
+        reason: 'Cadastro inicial do lote',
+      },
+      select: { id: true },
+    });
   });
 
   it('should use the authenticated store for a store user', async () => {
@@ -1117,6 +1324,26 @@ describe('ExpirationsService', () => {
     expect(prismaServiceMock.productLot.update).not.toHaveBeenCalled();
   });
 
+  it('should require a reason when the quantity changes', async () => {
+    prismaServiceMock.productLot.findUnique.mockResolvedValue(expiration);
+
+    await expect(
+      service.update(
+        expirationId,
+        {
+          quantity: 12,
+        },
+        storeUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prismaServiceMock.$transaction).not.toHaveBeenCalled();
+    expect(transactionMock.productLot.update).not.toHaveBeenCalled();
+    expect(
+      transactionMock.productLotStockAdjustment.create,
+    ).not.toHaveBeenCalled();
+  });
+
   it('should update and inactivate an expiration record', async () => {
     const updatedExpiration: ExpirationRecord = {
       ...expiration,
@@ -1128,7 +1355,7 @@ describe('ExpirationsService', () => {
     };
 
     prismaServiceMock.productLot.findUnique.mockResolvedValue(expiration);
-    prismaServiceMock.productLot.update.mockResolvedValue(updatedExpiration);
+    transactionMock.productLot.update.mockResolvedValue(updatedExpiration);
 
     await expect(
       service.update(
@@ -1137,6 +1364,8 @@ describe('ExpirationsService', () => {
           batchNumber: null,
           expirationDate: '2027-01-15',
           quantity: 25,
+          adjustmentReason: 'Correção após inventário físico',
+          adjustmentNotes: 'Contagem conferida pela equipe',
           notes: null,
           isActive: false,
         },
@@ -1144,10 +1373,11 @@ describe('ExpirationsService', () => {
       ),
     ).resolves.toEqual(updatedExpiration);
 
-    expect(prismaServiceMock.productLot.update).toHaveBeenCalledWith(
+    expect(transactionMock.productLot.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           id: expirationId,
+          quantity: expiration.quantity,
         },
         data: {
           batchNumber: null,
@@ -1155,6 +1385,22 @@ describe('ExpirationsService', () => {
           quantity: 25,
           notes: null,
           isActive: false,
+        },
+      }),
+    );
+    expect(
+      transactionMock.productLotStockAdjustment.create,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          productLotId: expirationId,
+          performedByUserId: storeUser.id,
+          type: 'ADJUSTMENT',
+          quantityDelta: 15,
+          previousQuantity: 10,
+          resultingQuantity: 25,
+          reason: 'Correção após inventário físico',
+          notes: 'Contagem conferida pela equipe',
         },
       }),
     );

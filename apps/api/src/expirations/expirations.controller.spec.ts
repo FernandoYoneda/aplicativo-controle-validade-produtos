@@ -14,6 +14,7 @@ import {
   ExpirationStatusFilter,
   type ListExpirationsQueryDto,
 } from './dto/list-expirations-query.dto';
+import { InventoryMovementTypeFilter } from './dto/list-inventory-movements-query.dto';
 import { ExpirationsController } from './expirations.controller';
 import {
   type ExpirationRecord,
@@ -78,6 +79,8 @@ describe('ExpirationsController', () => {
     findAlerts: jest.fn(),
     acknowledgeAlert: jest.fn(),
     exportSpreadsheet: jest.fn(),
+    findInventoryMovements: jest.fn(),
+    exportInventoryMovements: jest.fn(),
     searchWriteOffCandidates: jest.fn(),
     findWriteOffs: jest.fn(),
     writeOff: jest.fn(),
@@ -240,6 +243,66 @@ describe('ExpirationsController', () => {
       expect.objectContaining({
         'Content-Disposition': `attachment; filename="${report.fileName}"`,
         'Content-Length': String(report.buffer.length),
+      }),
+    );
+  });
+
+  it('should delegate inventory movement listing to the service', async () => {
+    const query = {
+      page: 1,
+      pageSize: 20,
+      type: InventoryMovementTypeFilter.ALL,
+      storeId,
+    };
+    const page = {
+      data: [],
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+      summary: {
+        total: 0,
+        writeOffs: 0,
+        reversals: 0,
+        writtenOffQuantity: 0,
+        restoredQuantity: 0,
+        netQuantity: 0,
+      },
+    };
+    expirationsServiceMock.findInventoryMovements.mockResolvedValue(page);
+
+    await expect(
+      controller.findInventoryMovements(query, request),
+    ).resolves.toEqual(page);
+    expect(expirationsServiceMock.findInventoryMovements).toHaveBeenCalledWith(
+      query,
+      authenticatedUser,
+    );
+  });
+
+  it('should return the inventory movement spreadsheet', async () => {
+    const query = {
+      page: 1,
+      pageSize: 20,
+      type: InventoryMovementTypeFilter.ALL,
+    };
+    const report = {
+      buffer: Buffer.from('planilha'),
+      fileName: 'movimentacoes-estoque-20260914-120000.xlsx',
+    };
+    const response = { set: jest.fn() };
+    expirationsServiceMock.exportInventoryMovements.mockResolvedValue(report);
+
+    const result = await controller.exportInventoryMovements(
+      query,
+      request,
+      response as never,
+    );
+
+    expect(result).toBeInstanceOf(StreamableFile);
+    expect(
+      expirationsServiceMock.exportInventoryMovements,
+    ).toHaveBeenCalledWith(query, authenticatedUser);
+    expect(response.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'Content-Disposition': `attachment; filename="${report.fileName}"`,
       }),
     );
   });

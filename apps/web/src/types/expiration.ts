@@ -120,6 +120,8 @@ export interface UpdateExpirationPayload {
   batchNumber?: string | null;
   expirationDate?: string;
   quantity?: number;
+  adjustmentReason?: string;
+  adjustmentNotes?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -162,6 +164,53 @@ export interface ExpirationWriteOffRecord {
     "id" | "batchNumber" | "expirationDate" | "quantity" | "isActive"
   > & {
     storeProduct: Pick<ExpirationStoreProduct, "store" | "product">;
+  };
+}
+
+export type InventoryMovementType =
+  | "ENTRY"
+  | "ADJUSTMENT"
+  | "WRITE_OFF"
+  | "REVERSAL";
+export type InventoryMovementTypeFilter =
+  | "all"
+  | "entry"
+  | "adjustment"
+  | "writeOff"
+  | "reversal";
+
+export interface InventoryMovementRecord {
+  id: string;
+  writeOffId: string | null;
+  stockAdjustmentId: string | null;
+  type: InventoryMovementType;
+  quantity: number;
+  previousQuantity: number;
+  resultingQuantity: number;
+  reason: string;
+  notes: string | null;
+  createdAt: string;
+  performedBy: ExpirationWriteOffRecord["performedBy"];
+  productLot: ExpirationWriteOffRecord["productLot"];
+}
+
+export interface InventoryMovementPage {
+  data: InventoryMovementRecord[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    total: number;
+    entries: number;
+    adjustments: number;
+    writeOffs: number;
+    reversals: number;
+    inboundQuantity: number;
+    outboundQuantity: number;
+    netQuantity: number;
   };
 }
 

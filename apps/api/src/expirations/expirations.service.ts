@@ -10,6 +10,7 @@ import * as XLSX from '@e965/xlsx';
 import type { Prisma } from '../../generated/prisma/client';
 import {
   ExpirationAlertType,
+  ProductLotStockAdjustmentType,
   ProductLotWriteOffReason,
   UserRole,
 } from '../../generated/prisma/enums';
@@ -20,6 +21,10 @@ import { extractEmbeddedProductCodeFromEan13 } from '../products/product-code-ma
 import type { CreateExpirationDto } from './dto/create-expiration.dto';
 import type { CreateWriteOffDto } from './dto/create-write-off.dto';
 import type { CreateWriteOffReversalDto } from './dto/create-write-off-reversal.dto';
+import {
+  InventoryMovementTypeFilter,
+  type ListInventoryMovementsQueryDto,
+} from './dto/list-inventory-movements-query.dto';
 import {
   ExpirationAlertReviewFilter,
   ExpirationAlertStatusFilter,
@@ -51,6 +56,12 @@ import {
   expirationWriteOffSelect,
   expirationWriteOffReversalSelect,
 } from './expiration-write-off.types';
+import {
+  productLotStockAdjustmentSelect,
+  type InventoryMovementPage,
+  type InventoryMovementRecord,
+  type InventoryMovementSummary,
+} from './inventory-movement.types';
 
 interface ExpirationDateLimits {
   today: Date;
@@ -462,6 +473,113 @@ export class ExpirationsService {
     };
   }
 
+  async findInventoryMovements(
+    query: ListInventoryMovementsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<InventoryMovementPage> {
+    const movements = await this.getInventoryMovements(query, user);
+    const total = movements.length;
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const offset = (page - 1) * query.pageSize;
+
+    return {
+      data: movements.slice(offset, offset + query.pageSize),
+      meta: {
+        page,
+        pageSize: query.pageSize,
+        total,
+        totalPages,
+      },
+      summary: this.getInventoryMovementSummary(movements),
+    };
+  }
+
+  async exportInventoryMovements(
+    query: ListInventoryMovementsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExpirationExport> {
+    const movements = await this.getInventoryMovements(query, user);
+
+    if (movements.length > MAX_EXPORT_ROWS) {
+      throw new BadRequestException(
+        `A exportação está limitada a ${MAX_EXPORT_ROWS.toLocaleString('pt-BR')} movimentações. Refine os filtros e tente novamente.`,
+      );
+    }
+
+    const rows: Array<Array<string | number | Date>> = [
+      [
+        'Data e hora',
+        'Movimentação',
+        'Código do produto',
+        'Código de barras',
+        'Produto',
+        'Loja',
+        'Lote',
+        'Validade',
+        'Quantidade',
+        'Saldo anterior',
+        'Saldo resultante',
+        'Motivo',
+        'Responsável',
+        'E-mail do responsável',
+        'Observações',
+      ],
+      ...movements.map((movement) => {
+        const product = movement.productLot.storeProduct.product;
+        const store = movement.productLot.storeProduct.store;
+
+        return [
+          this.getSaoPauloDateTimeLabel(movement.createdAt),
+          this.getInventoryMovementTypeLabel(movement),
+          product.code,
+          product.barcode ?? '',
+          product.name,
+          `${store.code} — ${store.name}`,
+          movement.productLot.batchNumber ?? '',
+          this.getDateOnlyLabel(movement.productLot.expirationDate),
+          movement.resultingQuantity - movement.previousQuantity,
+          movement.previousQuantity,
+          movement.resultingQuantity,
+          this.getInventoryMovementReasonLabel(movement),
+          movement.performedBy.name,
+          movement.performedBy.email,
+          movement.notes ?? '',
+        ];
+      }),
+    ];
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!autofilter'] = { ref: worksheet['!ref'] ?? 'A1:O1' };
+    worksheet['!cols'] = [
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 42 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 34 },
+      { wch: 28 },
+      { wch: 32 },
+      { wch: 42 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimentações');
+
+    return {
+      buffer: XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+        cellDates: true,
+      }) as Buffer,
+      fileName: `movimentacoes-estoque-${this.getSaoPauloDateStamp()}.xlsx`,
+    };
+  }
+
   async searchWriteOffCandidates(
     query: SearchWriteOffQueryDto,
     user: AuthenticatedUser,
@@ -801,7 +919,7 @@ export class ExpirationsService {
         },
       });
 
-      return transaction.productLot.create({
+      const productLot = await transaction.productLot.create({
         data: {
           storeProductId: storeProduct.id,
           batchNumber: createExpirationDto.batchNumber ?? null,
@@ -813,6 +931,21 @@ export class ExpirationsService {
         },
         select: expirationSelect,
       });
+
+      await transaction.productLotStockAdjustment.create({
+        data: {
+          productLotId: productLot.id,
+          performedByUserId: user.id,
+          type: ProductLotStockAdjustmentType.ENTRY,
+          quantityDelta: productLot.quantity,
+          previousQuantity: 0,
+          resultingQuantity: productLot.quantity,
+          reason: 'Cadastro inicial do lote',
+        },
+        select: { id: true },
+      });
+
+      return productLot;
     });
   }
 
@@ -847,22 +980,64 @@ export class ExpirationsService {
 
     this.ensureStoreAccess(user, expiration.storeProduct.store.id);
 
-    return this.prisma.productLot.update({
-      where: {
-        id,
-      },
-      data: {
-        batchNumber: updateExpirationDto.batchNumber,
-        expirationDate:
-          updateExpirationDto.expirationDate !== undefined
-            ? this.parseDateOnly(updateExpirationDto.expirationDate)
-            : undefined,
-        quantity: updateExpirationDto.quantity,
-        notes: updateExpirationDto.notes,
-        isActive: updateExpirationDto.isActive,
-      },
-      select: expirationSelect,
-    });
+    const quantityChanged =
+      updateExpirationDto.quantity !== undefined &&
+      updateExpirationDto.quantity !== expiration.quantity;
+    const adjustmentReason = updateExpirationDto.adjustmentReason;
+
+    if (quantityChanged && !adjustmentReason) {
+      throw new BadRequestException(
+        'Informe o motivo do ajuste para alterar a quantidade.',
+      );
+    }
+    const validatedAdjustmentReason = adjustmentReason ?? '';
+
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const updatedExpiration = await transaction.productLot.update({
+          where: quantityChanged
+            ? { id, quantity: expiration.quantity }
+            : { id },
+          data: {
+            batchNumber: updateExpirationDto.batchNumber,
+            expirationDate:
+              updateExpirationDto.expirationDate !== undefined
+                ? this.parseDateOnly(updateExpirationDto.expirationDate)
+                : undefined,
+            quantity: updateExpirationDto.quantity,
+            notes: updateExpirationDto.notes,
+            isActive: updateExpirationDto.isActive,
+          },
+          select: expirationSelect,
+        });
+
+        if (quantityChanged) {
+          await transaction.productLotStockAdjustment.create({
+            data: {
+              productLotId: id,
+              performedByUserId: user.id,
+              type: ProductLotStockAdjustmentType.ADJUSTMENT,
+              quantityDelta: updatedExpiration.quantity - expiration.quantity,
+              previousQuantity: expiration.quantity,
+              resultingQuantity: updatedExpiration.quantity,
+              reason: validatedAdjustmentReason,
+              notes: updateExpirationDto.adjustmentNotes ?? null,
+            },
+            select: { id: true },
+          });
+        }
+
+        return updatedExpiration;
+      });
+    } catch (error: unknown) {
+      if (this.hasPrismaErrorCode(error, 'P2025')) {
+        throw new ConflictException(
+          'O saldo deste lote foi alterado por outra operação. Atualize a lista e tente novamente.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   private resolveStoreId(
@@ -888,6 +1063,237 @@ export class ExpirationsService {
     }
 
     return storeId;
+  }
+
+  private async getInventoryMovements(
+    query: ListInventoryMovementsQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<InventoryMovementRecord[]> {
+    const accessWhere = this.getAccessWhere(user, query.storeId);
+    const from = query.from
+      ? new Date(`${query.from.slice(0, 10)}T00:00:00-03:00`)
+      : null;
+    const to = query.to
+      ? new Date(`${query.to.slice(0, 10)}T00:00:00-03:00`)
+      : null;
+
+    if (from && to && from > to) {
+      throw new BadRequestException(
+        'A data inicial não pode ser posterior à data final.',
+      );
+    }
+
+    const toExclusive = to
+      ? new Date(to.getTime() + MILLISECONDS_PER_DAY)
+      : null;
+    const dateWhere: Prisma.DateTimeFilter = {
+      ...(from ? { gte: from } : {}),
+      ...(toExclusive ? { lt: toExclusive } : {}),
+    };
+    const hasDateFilter = Boolean(from || toExclusive);
+    const includeWriteOffs = [
+      InventoryMovementTypeFilter.ALL,
+      InventoryMovementTypeFilter.WRITE_OFF,
+      InventoryMovementTypeFilter.REVERSAL,
+    ].includes(query.type);
+    const includeStockAdjustments = [
+      InventoryMovementTypeFilter.ALL,
+      InventoryMovementTypeFilter.ENTRY,
+      InventoryMovementTypeFilter.ADJUSTMENT,
+    ].includes(query.type);
+    const writeOffWhere: Prisma.ProductLotWriteOffWhereInput =
+      query.type === InventoryMovementTypeFilter.WRITE_OFF
+        ? { createdAt: dateWhere }
+        : query.type === InventoryMovementTypeFilter.REVERSAL
+          ? { reversal: { is: { createdAt: dateWhere } } }
+          : hasDateFilter
+            ? {
+                OR: [
+                  { createdAt: dateWhere },
+                  { reversal: { is: { createdAt: dateWhere } } },
+                ],
+              }
+            : {};
+    const adjustmentType =
+      query.type === InventoryMovementTypeFilter.ENTRY
+        ? ProductLotStockAdjustmentType.ENTRY
+        : query.type === InventoryMovementTypeFilter.ADJUSTMENT
+          ? ProductLotStockAdjustmentType.ADJUSTMENT
+          : undefined;
+    const stockAdjustmentWhere: Prisma.ProductLotStockAdjustmentWhereInput = {
+      AND: [
+        { productLot: accessWhere },
+        ...(hasDateFilter ? [{ createdAt: dateWhere }] : []),
+        ...(adjustmentType ? [{ type: adjustmentType }] : []),
+      ],
+    };
+    const [writeOffs, stockAdjustments] = await Promise.all([
+      includeWriteOffs
+        ? this.prisma.productLotWriteOff.findMany({
+            where: { AND: [{ productLot: accessWhere }, writeOffWhere] },
+            select: expirationWriteOffSelect,
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
+      includeStockAdjustments
+        ? this.prisma.productLotStockAdjustment.findMany({
+            where: stockAdjustmentWhere,
+            select: productLotStockAdjustmentSelect,
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
+    ]);
+    const movements = writeOffs.flatMap<InventoryMovementRecord>((writeOff) => {
+      const records: InventoryMovementRecord[] = [];
+
+      if (query.type !== InventoryMovementTypeFilter.REVERSAL) {
+        records.push({
+          id: writeOff.id,
+          writeOffId: writeOff.id,
+          stockAdjustmentId: null,
+          type: 'WRITE_OFF',
+          quantity: writeOff.quantity,
+          previousQuantity: writeOff.previousQuantity,
+          resultingQuantity: writeOff.remainingQuantity,
+          reason: writeOff.reason,
+          notes: writeOff.notes,
+          createdAt: writeOff.createdAt,
+          performedBy: writeOff.performedBy,
+          productLot: writeOff.productLot,
+        });
+      }
+
+      if (
+        query.type !== InventoryMovementTypeFilter.WRITE_OFF &&
+        writeOff.reversal
+      ) {
+        records.push({
+          id: writeOff.reversal.id,
+          writeOffId: writeOff.id,
+          stockAdjustmentId: null,
+          type: 'REVERSAL',
+          quantity: writeOff.reversal.restoredQuantity,
+          previousQuantity: writeOff.reversal.previousQuantity,
+          resultingQuantity: writeOff.reversal.resultingQuantity,
+          reason: writeOff.reversal.reason,
+          notes: writeOff.reversal.notes,
+          createdAt: writeOff.reversal.createdAt,
+          performedBy: writeOff.reversal.reversedBy,
+          productLot: writeOff.productLot,
+        });
+      }
+
+      return records;
+    });
+    movements.push(
+      ...stockAdjustments.map<InventoryMovementRecord>((adjustment) => ({
+        id: adjustment.id,
+        writeOffId: null,
+        stockAdjustmentId: adjustment.id,
+        type:
+          adjustment.type === ProductLotStockAdjustmentType.ENTRY
+            ? 'ENTRY'
+            : 'ADJUSTMENT',
+        quantity: Math.abs(adjustment.quantityDelta),
+        previousQuantity: adjustment.previousQuantity,
+        resultingQuantity: adjustment.resultingQuantity,
+        reason: adjustment.reason,
+        notes: adjustment.notes,
+        createdAt: adjustment.createdAt,
+        performedBy: adjustment.performedBy,
+        productLot: adjustment.productLot,
+      })),
+    );
+    const search = query.search?.trim().toLocaleLowerCase('pt-BR');
+
+    return movements
+      .filter((movement) => {
+        if (from && movement.createdAt < from) return false;
+        if (toExclusive && movement.createdAt >= toExclusive) return false;
+        if (!search) return true;
+
+        const product = movement.productLot.storeProduct.product;
+        const store = movement.productLot.storeProduct.store;
+        return [
+          this.getInventoryMovementTypeLabel(movement),
+          movement.reason,
+          this.getInventoryMovementReasonLabel(movement),
+          movement.notes,
+          movement.performedBy.name,
+          movement.performedBy.email,
+          product.code,
+          product.barcode,
+          product.name,
+          store.code,
+          store.name,
+          movement.productLot.batchNumber,
+        ].some((value) => value?.toLocaleLowerCase('pt-BR').includes(search));
+      })
+      .sort(
+        (left, right) =>
+          right.createdAt.getTime() - left.createdAt.getTime() ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  private getInventoryMovementSummary(
+    movements: InventoryMovementRecord[],
+  ): InventoryMovementSummary {
+    const entries = movements.filter((movement) => movement.type === 'ENTRY');
+    const adjustments = movements.filter(
+      (movement) => movement.type === 'ADJUSTMENT',
+    );
+    const writeOffs = movements.filter(
+      (movement) => movement.type === 'WRITE_OFF',
+    );
+    const reversals = movements.filter(
+      (movement) => movement.type === 'REVERSAL',
+    );
+    const inboundQuantity = movements.reduce((total, movement) => {
+      const difference = movement.resultingQuantity - movement.previousQuantity;
+      return difference > 0 ? total + difference : total;
+    }, 0);
+    const outboundQuantity = movements.reduce((total, movement) => {
+      const difference = movement.resultingQuantity - movement.previousQuantity;
+      return difference < 0 ? total + Math.abs(difference) : total;
+    }, 0);
+
+    return {
+      total: movements.length,
+      entries: entries.length,
+      adjustments: adjustments.length,
+      writeOffs: writeOffs.length,
+      reversals: reversals.length,
+      inboundQuantity,
+      outboundQuantity,
+      netQuantity: inboundQuantity - outboundQuantity,
+    };
+  }
+
+  private getInventoryMovementTypeLabel(
+    movement: InventoryMovementRecord,
+  ): string {
+    const labels: Record<InventoryMovementRecord['type'], string> = {
+      ENTRY: 'Entrada',
+      ADJUSTMENT: 'Ajuste',
+      WRITE_OFF: 'Baixa',
+      REVERSAL: 'Estorno',
+    };
+
+    return labels[movement.type];
+  }
+
+  private getInventoryMovementReasonLabel(
+    movement: InventoryMovementRecord,
+  ): string {
+    if (movement.type !== 'WRITE_OFF') return movement.reason;
+
+    const labels: Record<ProductLotWriteOffReason, string> = {
+      [ProductLotWriteOffReason.SOLD]: 'Vendido',
+      [ProductLotWriteOffReason.EXPIRED]: 'Vencido',
+      [ProductLotWriteOffReason.DISCARDED]: 'Descartado',
+    };
+    return labels[movement.reason as ProductLotWriteOffReason];
   }
 
   private getAccessWhere(
@@ -1226,6 +1632,29 @@ export class ExpirationsService {
       expirationDate.getUTCMonth(),
       expirationDate.getUTCDate(),
     );
+  }
+
+  private getSaoPauloDateTimeLabel(date: Date): string {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    const value = (type: Intl.DateTimeFormatPartTypes): string =>
+      parts.find((part) => part.type === type)?.value ?? '00';
+
+    return `${value('day')}/${value('month')}/${value('year')} ${value('hour')}:${value('minute')}`;
+  }
+
+  private getDateOnlyLabel(date: Date): string {
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    return `${day}/${month}/${date.getUTCFullYear()}`;
   }
 
   private getSaoPauloDateStamp(): string {

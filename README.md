@@ -34,6 +34,9 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - baixa parcial por venda, vencimento ou descarte, com encerramento automático do lote quando o saldo chega a zero;
 - histórico auditável das baixas com responsável, quantidade e saldo do lote;
 - estorno auditável de baixas realizadas por engano, com restauração do saldo e identificação do responsável;
+- registro auditável da entrada inicial de novos lotes e dos ajustes manuais de quantidade;
+- exigência de motivo para alterações de saldo, com responsável, horário e saldos anterior e resultante;
+- relatório operacional consolidado com entradas, ajustes, baixas e estornos;
 - acompanhamento de produtos vencidos, próximos de 30 dias, de 31 dias a 3 meses, de 3 a 6 meses, de 6 meses a 1 ano e acima de 1 ano.
 
 ### Usuário de loja
@@ -55,11 +58,22 @@ O projeto utiliza um monorepo com uma API NestJS, uma aplicação web Next.js e 
 - cadastro de lotes usando automaticamente a loja associada ao usuário;
 - busca rápida de produtos ativos por código, código de barras ou nome durante o cadastro de validade;
 - baixa rápida dos lotes da própria unidade por leitor USB ou busca manual;
+- ajustes de quantidade com motivo obrigatório e histórico restrito à própria unidade;
 - isolamento de dados entre unidades.
 
 ### Baixa rápida de produtos
 
 O botão `Baixa rápida` da área de Validades aceita leitores USB configurados como teclado. Ao ler o código de barras, o leitor preenche o campo e finaliza com `Enter/CR` ou `Ctrl+J/LF`; a aplicação bloqueia o atalho de downloads do navegador, localiza os lotes ativos da unidade e prioriza o que vence primeiro (FEFO). Essa proteção também funciona nos demais campos de leitura, como a busca de produto em `Nova validade`.
+
+### Entradas e ajustes auditáveis
+
+Todo novo lote gera uma movimentação de entrada com o saldo inicial, o responsável e o horário do cadastro. Quando a quantidade de um lote existente é alterada, o sistema exige um motivo, permite acrescentar uma observação e registra a diferença, o saldo anterior e o saldo resultante. Alterações simultâneas do mesmo saldo são bloqueadas para evitar registros inconsistentes.
+
+Os lotes cadastrados antes desta funcionalidade permanecem disponíveis normalmente. As entradas e os ajustes passam a ser registrados a partir da aplicação da migração correspondente; o sistema não cria movimentações retroativas para os saldos antigos.
+
+### Relatório de movimentações
+
+A área `Movimentações` reúne entradas, ajustes, baixas e estornos em uma linha do tempo auditável. A consulta permite buscar por produto, código, loja, lote ou responsável, filtrar por tipo, unidade e período, acompanhar as unidades de entrada, de saída e a variação líquida, além de exportar o resultado para Excel. No arquivo exportado, entradas aparecem com quantidade positiva e saídas com quantidade negativa. Usuários de loja visualizam apenas as movimentações da própria unidade.
 
 Durante a operação, a tela informa se o leitor está pronto, buscando ou se o produto foi localizado. Leituras duplicadas em sequência são ignoradas, códigos não encontrados ficam selecionados para serem substituídos pela próxima leitura e o foco retorna automaticamente ao campo após cada baixa. O som de confirmação é opcional e pode ser ativado no próprio modal.
 
@@ -604,6 +618,8 @@ Todas as rotas abaixo, exceto o login e a rota de saúde, exigem um token JWT.
 | `GET`   | `/expirations/write-off/search` | Administrador e usuário de loja |
 | `GET`   | `/expirations/write-offs` | Administrador e usuário de loja |
 | `POST`  | `/expirations/write-offs/:id/reversal` | Administrador e usuário de loja |
+| `GET`   | `/expirations/inventory-movements` | Administrador e usuário de loja |
+| `GET`   | `/expirations/inventory-movements/export` | Administrador e usuário de loja |
 | `POST`  | `/expirations`          | Administrador e usuário de loja |
 | `POST`  | `/expirations/:id/write-off` | Administrador e usuário de loja |
 | `PATCH` | `/expirations/:id`      | Administrador e usuário de loja |
